@@ -40,12 +40,16 @@ Create or update the Turso schema and seed the starter applications with:
 npm run db:setup
 ```
 
-Invite a family member or friend with a Google account:
+Administrators can invite, revoke, and restore users from **Settings › People**
+in the application. The command-line alternative remains available:
 
 ```text
 npm run user:invite -- person@example.com "Display name"
 ```
 
 Add `admin` as the last argument only when the person should control workflow and internal requests. List invitation and Firebase-link status with `npm run user:list`.
+
+Administrators can also create, edit, reorder, archive, and restore applications
+from **Settings › Apps**. Archiving preserves every existing request.
 
 Authenticated write requests are limited to 32 KiB and throttled per user. Every API response includes a request identifier for safe troubleshooting.

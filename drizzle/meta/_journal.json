@@ -15,6 +15,27 @@
       "when": 1786046042490,
       "tag": "0001_cute_machine_man",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1786094325424,
+      "tag": "0002_round_loa",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1786102829275,
+      "tag": "0003_light_argent",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1786118121659,
+      "tag": "0004_chunky_johnny_blaze",
+      "breakpoints": true
     }
   ]
 }

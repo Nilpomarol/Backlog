@@ -21,9 +21,9 @@ if (!process.env.TURSO_DATABASE_URL || !process.env.TURSO_AUTH_TOKEN) throw new 
 
 const client = createClient({ url: process.env.TURSO_DATABASE_URL, authToken: process.env.TURSO_AUTH_TOKEN });
 await client.execute({
-  sql: `INSERT INTO users (id, email, name, role, updated_at)
-        VALUES (?, ?, ?, ?, ?)
-        ON CONFLICT(email) DO UPDATE SET name = excluded.name, role = excluded.role, updated_at = excluded.updated_at`,
+  sql: `INSERT INTO users (id, email, name, role, is_active, updated_at)
+        VALUES (?, ?, ?, ?, 1, ?)
+        ON CONFLICT(email) DO UPDATE SET name = excluded.name, role = excluded.role, is_active = 1, updated_at = excluded.updated_at`,
   args: [crypto.randomUUID(), email, name, roleInput, Date.now()],
 });
 console.log(`Invitation ready for ${email} with role ${roleInput}.`);

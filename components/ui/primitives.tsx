@@ -277,12 +277,18 @@ export function Avatar({
 }: {
   name: string;
   url?: string | null;
-  size?: "sm" | "md" | "lg";
+  size?: "sm" | "md" | "lg" | "xl";
   admin?: boolean;
 }) {
   return (
     <span
-      className={classes("avatar", size === "md" && "avatar-md", size === "lg" && "avatar-lg", admin && "avatar-admin")}
+      className={classes(
+        "avatar",
+        size === "md" && "avatar-md",
+        size === "lg" && "avatar-lg",
+        size === "xl" && "avatar-xl",
+        admin && "avatar-admin",
+      )}
       aria-hidden="true"
     >
       {url ? (

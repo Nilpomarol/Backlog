@@ -1,10 +1,9 @@
 "use client";
 
-import { getDownloadURL, ref, uploadBytes } from "firebase/storage";
 import { Archive, ArrowDown, ArrowUp, KeyRound, LayoutGrid, MoreHorizontal, Pencil, Plus, RotateCcw, Trash2, Upload } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState, type ChangeEvent, type FormEvent } from "react";
-import { getFirebaseStorage } from "../../lib/firebase-client";
+import { IMAGE_ALLOWED_TYPES, ImageUploadError, uploadImage } from "../../lib/upload-image";
 import type { ManagedApplication } from "../../lib/domain";
 import {
   useAppUsers,
@@ -23,47 +22,6 @@ import { EmptyState, ErrorState } from "../ui/states";
 import { useToast } from "../ui/toast";
 import { AccessSheet } from "./access-sheet";
 import { SettingsNav } from "./settings-nav";
-
-const LOGO_MAX_BYTES = 2 * 1024 * 1024;
-const LOGO_MAX_SOURCE_BYTES = 20 * 1024 * 1024;
-const LOGO_MAX_DIMENSION = 512;
-const LOGO_ALLOWED_TYPES = ["image/png", "image/jpeg", "image/webp", "image/svg+xml"];
-const LOGO_EXTENSION_BY_TYPE: Record<string, string> = {
-  "image/png": "png",
-  "image/jpeg": "jpg",
-  "image/webp": "webp",
-  "image/svg+xml": "svg",
-};
-
-/**
- * Downscales to LOGO_MAX_DIMENSION and re-encodes as WebP, backing off in quality until the
- * result fits LOGO_MAX_BYTES. Logos only ever render at a few dozen px, so this loses nothing
- * visible while turning multi-megabyte camera photos into a few KB.
- */
-async function compressLogoImage(file: File): Promise<File> {
-  const bitmap = await createImageBitmap(file);
-  try {
-    const scale = Math.min(1, LOGO_MAX_DIMENSION / Math.max(bitmap.width, bitmap.height));
-    const width = Math.max(1, Math.round(bitmap.width * scale));
-    const height = Math.max(1, Math.round(bitmap.height * scale));
-    const canvas = document.createElement("canvas");
-    canvas.width = width;
-    canvas.height = height;
-    const context = canvas.getContext("2d");
-    if (!context) throw new Error("Canvas 2D is not supported.");
-    context.drawImage(bitmap, 0, 0, width, height);
-
-    for (const quality of [0.85, 0.7, 0.55, 0.4]) {
-      const blob: Blob | null = await new Promise((resolve) => canvas.toBlob(resolve, "image/webp", quality));
-      if (blob && blob.size <= LOGO_MAX_BYTES) {
-        return new File([blob], file.name.replace(/\.[^.]+$/, "") + ".webp", { type: "image/webp" });
-      }
-    }
-    throw new Error("Could not compress the image under the size limit.");
-  } finally {
-    bitmap.close();
-  }
-}
 
 export function AppsSettingsPage() {
   const t = useT();
@@ -156,38 +114,21 @@ export function AppsSettingsPage() {
     const file = event.target.files?.[0];
     event.target.value = "";
     if (!file) return;
-    if (!LOGO_ALLOWED_TYPES.includes(file.type)) {
-      toast(t.logoInvalidType, { tone: "error" });
-      return;
-    }
-    if (file.size > LOGO_MAX_SOURCE_BYTES) {
-      toast(t.logoSourceTooLarge, { tone: "error" });
-      return;
-    }
-    if (file.type === "image/svg+xml" && file.size > LOGO_MAX_BYTES) {
-      toast(t.logoSvgTooLarge, { tone: "error" });
-      return;
-    }
-
     setUploadingLogo(true);
     try {
-      let upload = file;
-      if (file.type !== "image/svg+xml" && file.size > LOGO_MAX_BYTES) {
-        try {
-          upload = await compressLogoImage(file);
-        } catch {
-          toast(t.logoTooLarge, { tone: "error" });
-          return;
-        }
-      }
-      const storage = getFirebaseStorage();
-      const extension = LOGO_EXTENSION_BY_TYPE[upload.type] ?? "png";
-      const path = `app-logos/${crypto.randomUUID()}.${extension}`;
-      const storageRef = ref(storage, path);
-      await uploadBytes(storageRef, upload, { contentType: upload.type });
-      setLogoUrl(await getDownloadURL(storageRef));
-    } catch {
-      toast(t.logoUploadFailed, { tone: "error" });
+      setLogoUrl(await uploadImage(file, "app-logos"));
+    } catch (error) {
+      const code = error instanceof ImageUploadError ? error.code : "upload";
+      toast(
+        {
+          type: t.logoInvalidType,
+          "source-too-large": t.logoSourceTooLarge,
+          "svg-too-large": t.logoSvgTooLarge,
+          compress: t.logoTooLarge,
+          upload: t.logoUploadFailed,
+        }[code],
+        { tone: "error" },
+      );
     } finally {
       setUploadingLogo(false);
     }
@@ -453,7 +394,7 @@ export function AppsSettingsPage() {
               <input
                 ref={logoFileInputRef}
                 type="file"
-                accept={LOGO_ALLOWED_TYPES.join(",")}
+                accept={IMAGE_ALLOWED_TYPES.join(",")}
                 style={{ display: "none" }}
                 onChange={(event) => void handleLogoFile(event)}
               />

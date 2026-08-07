@@ -1,11 +1,11 @@
 import type { Metadata } from "next";
-import { BacklogApp } from "./backlog-app";
+import { OverviewPage } from "../components/pages/overview";
 
 export const metadata: Metadata = {
-  title: "Millores d’Atlas",
+  title: "Resum",
   description: "Vota idees, comunica errors i segueix què es construirà a continuació.",
 };
 
 export default function Home() {
-  return <BacklogApp />;
+  return <OverviewPage />;
 }

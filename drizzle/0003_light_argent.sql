@@ -1,0 +1,1 @@
+ALTER TABLE `apps` ADD `logo_url` text;

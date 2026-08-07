@@ -29,16 +29,31 @@ const createItemSchema = z.object({
   visibility: itemVisibility.optional().default("shared"),
 });
 const updateItemSchema = z.object({
+  appId: z.string().min(1).max(80).optional(),
   title: z.string().trim().min(3).max(160).optional(),
   description: z.string().trim().max(4000).nullable().optional(),
   type: itemType.optional(),
-}).refine((value) => Object.keys(value).length > 0, "No changes supplied.");
+}).strict().refine((value) => Object.keys(value).length > 0, "No changes supplied.");
 const subtaskUpdateSchema = z.object({
   title: z.string().trim().min(1).max(160).optional(),
   completed: z.boolean().optional(),
 }).strict().refine((value) => Object.keys(value).length > 0, "No changes supplied.");
 const subtaskOrderSchema = z.object({ ids: z.array(z.string().min(1)).max(100) }).strict().refine((value) => new Set(value.ids).size === value.ids.length, "Subtask identifiers must be unique.");
 const avatarUrl = z.string().trim().url().max(1000).refine((value) => value.startsWith("https://"), "Profile images must use HTTPS.").nullable();
+const appFields = {
+  name: z.string().trim().min(2).max(80),
+  // An app's visual identity is an optional logo image; with none, the UI shows its first letter.
+  logoUrl: z.string().trim().url().max(1000).refine((value) => value.startsWith("https://"), "App logos must use HTTPS.").nullable().optional(),
+  description: z.string().trim().max(500),
+};
+const createAppSchema = z.object(appFields).strict();
+const updateAppSchema = z.object({
+  name: appFields.name.optional(),
+  logoUrl: appFields.logoUrl,
+  description: appFields.description.optional(),
+  sortOrder: z.number().int().min(0).max(9999).optional(),
+  isActive: z.boolean().optional(),
+}).strict().refine((value) => Object.keys(value).length > 0, "No changes supplied.");
 
 api.onError((error, context) => {
   console.error("API request failed", { requestId: context.get("requestId"), path: context.req.path, message: error.message });
@@ -81,7 +96,7 @@ api.use("/*", async (context, next) => {
 
   const db = getDb(context.env);
   const [invitedUser] = await db.select().from(users).where(eq(users.email, identity.email)).limit(1);
-  if (!invitedUser || (invitedUser.firebaseUid && invitedUser.firebaseUid !== identity.uid)) {
+  if (!invitedUser || !invitedUser.isActive || (invitedUser.firebaseUid && invitedUser.firebaseUid !== identity.uid)) {
     return context.json({ error: { code: "access_denied", message: "This account has not been invited." } }, 403);
   }
   if (!invitedUser.firebaseUid || (!invitedUser.avatarUrl && identity.picture)) {
@@ -122,7 +137,7 @@ api.patch("/me", async (context) => {
 api.get("/users", async (context) => {
   if (context.get("user").role !== "admin") return context.json({ error: { code: "forbidden", message: "Only administrators can manage users." } }, 403);
   const client = getClient(context.env);
-  const result = await client.execute("SELECT id, email, name, avatar_url AS avatarUrl, role, CASE WHEN firebase_uid IS NULL THEN 'pending' ELSE 'linked' END AS status FROM users ORDER BY role, name");
+  const result = await client.execute("SELECT id, email, name, avatar_url AS avatarUrl, role, CASE WHEN is_active = 0 THEN 'revoked' WHEN firebase_uid IS NULL THEN 'pending' ELSE 'linked' END AS status FROM users ORDER BY is_active DESC, role, name");
   return context.json({ data: result.rows });
 });
 
@@ -137,8 +152,8 @@ api.post("/users/invitations", async (context) => {
   const client = getClient(context.env);
   const id = crypto.randomUUID();
   await client.execute({
-    sql: `INSERT INTO users (id, email, name, role, updated_at) VALUES (?, ?, ?, ?, ?)
-          ON CONFLICT(email) DO UPDATE SET name = excluded.name, role = excluded.role, updated_at = excluded.updated_at`,
+    sql: `INSERT INTO users (id, email, name, role, is_active, updated_at) VALUES (?, ?, ?, ?, 1, ?)
+          ON CONFLICT(email) DO UPDATE SET name = excluded.name, role = excluded.role, is_active = 1, updated_at = excluded.updated_at`,
     args: [id, parsed.data.email, parsed.data.name, parsed.data.role, Date.now()],
   });
   return context.json({ data: { id, ...parsed.data } }, 201);
@@ -156,6 +171,18 @@ api.patch("/users/:id/role", async (context) => {
   return context.json({ data: { id: context.req.param("id"), role: parsed.data.role } });
 });
 
+api.patch("/users/:id/access", async (context) => {
+  const currentUser = context.get("user");
+  if (currentUser.role !== "admin") return context.json({ error: { code: "forbidden", message: "Only administrators can change access." } }, 403);
+  const parsed = z.object({ active: z.boolean() }).strict().safeParse(await context.req.json().catch(() => null));
+  if (!parsed.success) return context.json({ error: { code: "invalid_request", message: parsed.error.issues[0]?.message } }, 400);
+  if (context.req.param("id") === currentUser.id && !parsed.data.active) return context.json({ error: { code: "invalid_request", message: "You cannot revoke your own access." } }, 400);
+  const client = getClient(context.env);
+  const result = await client.execute({ sql: "UPDATE users SET is_active = ?, updated_at = ? WHERE id = ?", args: [parsed.data.active ? 1 : 0, Date.now(), context.req.param("id")] });
+  if (result.rowsAffected === 0) return context.json({ error: { code: "not_found", message: "User not found." } }, 404);
+  return context.json({ data: { id: context.req.param("id"), active: parsed.data.active } });
+});
+
 api.delete("/users/:id/invitation", async (context) => {
   const currentUser = context.get("user");
   if (currentUser.role !== "admin") return context.json({ error: { code: "forbidden", message: "Only administrators can remove invitations." } }, 403);
@@ -170,7 +197,7 @@ api.get("/apps", async (context) => {
   const currentUser = context.get("user");
   const client = getClient(context.env);
   const result = await client.execute({
-    sql: `SELECT a.id, a.name, a.icon, a.description, a.sort_order AS sortOrder,
+    sql: `SELECT a.id, a.name, a.logo_url AS logoUrl, a.description, a.sort_order AS sortOrder,
             COUNT(CASE WHEN b.status IN ('backlog','in_progress','in_review')
               AND (b.visibility = 'shared' OR ? = 'admin') THEN 1 END) AS activeItemCount
           FROM apps a LEFT JOIN backlog_items b ON b.app_id = a.id
@@ -180,13 +207,82 @@ api.get("/apps", async (context) => {
   return context.json({ data: result.rows });
 });
 
+api.get("/apps/manage", async (context) => {
+  if (context.get("user").role !== "admin") return context.json({ error: { code: "forbidden", message: "Only administrators can manage applications." } }, 403);
+  const client = getClient(context.env);
+  const result = await client.execute(`SELECT a.id, a.name, a.logo_url AS logoUrl, a.description, a.sort_order AS sortOrder,
+      a.is_active AS isActive, COUNT(b.id) AS itemCount
+    FROM apps a LEFT JOIN backlog_items b ON b.app_id = a.id
+    GROUP BY a.id ORDER BY a.sort_order, a.name`);
+  return context.json({ data: result.rows });
+});
+
+api.post("/apps", async (context) => {
+  if (context.get("user").role !== "admin") return context.json({ error: { code: "forbidden", message: "Only administrators can create applications." } }, 403);
+  const parsed = createAppSchema.safeParse(await context.req.json().catch(() => null));
+  if (!parsed.success) return context.json({ error: { code: "invalid_request", message: parsed.error.issues[0]?.message } }, 400);
+  const client = getClient(context.env);
+  const position = await client.execute("SELECT COALESCE(MAX(sort_order), -1) + 1 AS nextPosition FROM apps");
+  const id = crypto.randomUUID();
+  await client.execute({
+    sql: "INSERT INTO apps (id, name, logo_url, description, sort_order, is_active, created_at) VALUES (?, ?, ?, ?, ?, 1, ?)",
+    args: [id, parsed.data.name, parsed.data.logoUrl ?? null, parsed.data.description || null, Number(position.rows[0]?.nextPosition ?? 0), Date.now()],
+  });
+  return context.json({ data: { id, ...parsed.data, logoUrl: parsed.data.logoUrl ?? null, isActive: true, activeItemCount: 0 } }, 201);
+});
+
+api.patch("/apps/:id", async (context) => {
+  if (context.get("user").role !== "admin") return context.json({ error: { code: "forbidden", message: "Only administrators can edit applications." } }, 403);
+  const parsed = updateAppSchema.safeParse(await context.req.json().catch(() => null));
+  if (!parsed.success) return context.json({ error: { code: "invalid_request", message: parsed.error.issues[0]?.message } }, 400);
+  const client = getClient(context.env);
+  if (parsed.data.isActive === false) {
+    const active = await client.execute({ sql: "SELECT COUNT(*) AS count FROM apps WHERE is_active = 1 AND id <> ?", args: [context.req.param("id")] });
+    if (Number(active.rows[0]?.count ?? 0) === 0) return context.json({ error: { code: "invalid_request", message: "At least one application must remain active." } }, 400);
+  }
+  const columns: [string, string | number | null][] = [];
+  if (parsed.data.name !== undefined) columns.push(["name", parsed.data.name]);
+  if (parsed.data.logoUrl !== undefined) columns.push(["logo_url", parsed.data.logoUrl]);
+  if (parsed.data.description !== undefined) columns.push(["description", parsed.data.description || null]);
+  if (parsed.data.sortOrder !== undefined) columns.push(["sort_order", parsed.data.sortOrder]);
+  if (parsed.data.isActive !== undefined) columns.push(["is_active", parsed.data.isActive ? 1 : 0]);
+  const result = await client.execute({
+    sql: `UPDATE apps SET ${columns.map(([name]) => `${name} = ?`).join(", ")} WHERE id = ?`,
+    args: [...columns.map(([, value]) => value), context.req.param("id")],
+  });
+  if (result.rowsAffected === 0) return context.json({ error: { code: "not_found", message: "Application not found." } }, 404);
+  return context.json({ data: { id: context.req.param("id"), ...parsed.data } });
+});
+
+api.delete("/apps/:id", async (context) => {
+  if (context.get("user").role !== "admin") return context.json({ error: { code: "forbidden", message: "Only administrators can delete applications." } }, 403);
+  const client = getClient(context.env);
+  const id = context.req.param("id");
+  const [row] = (await client.execute({
+    sql: `SELECT a.is_active AS isActive, COUNT(b.id) AS itemCount FROM apps a
+          LEFT JOIN backlog_items b ON b.app_id = a.id WHERE a.id = ? GROUP BY a.id`,
+    args: [id],
+  })).rows;
+  if (!row) return context.json({ error: { code: "not_found", message: "Application not found." } }, 404);
+  if (Number(row.itemCount) > 0) {
+    return context.json({ error: { code: "invalid_request", message: "Only apps with no requests can be deleted. Archive it instead." } }, 400);
+  }
+  if (row.isActive) {
+    const active = await client.execute({ sql: "SELECT COUNT(*) AS count FROM apps WHERE is_active = 1 AND id <> ?", args: [id] });
+    if (Number(active.rows[0]?.count ?? 0) === 0) return context.json({ error: { code: "invalid_request", message: "At least one application must remain active." } }, 400);
+  }
+  const result = await client.execute({ sql: "DELETE FROM apps WHERE id = ?", args: [id] });
+  if (result.rowsAffected === 0) return context.json({ error: { code: "not_found", message: "Application not found." } }, 404);
+  return context.body(null, 204);
+});
+
 api.get("/apps/:appId/items", async (context) => {
   const currentUser = context.get("user");
   const client = getClient(context.env);
   const result = await client.execute({
     sql: `SELECT b.id, b.app_id AS appId, b.creator_id AS creatorId, b.title, b.description,
             b.type, b.status, b.visibility, b.created_at AS createdAt, b.updated_at AS updatedAt,
-            u.name AS creatorName, u.avatar_url AS creatorAvatarUrl,
+            u.name AS creatorName, u.avatar_url AS creatorAvatarUrl, u.role AS creatorRole,
             COUNT(DISTINCT v.user_id) AS votes,
             MAX(CASE WHEN v.user_id = ? THEN 1 ELSE 0 END) AS voted,
             COUNT(DISTINCT s.id) AS subtaskCount,
@@ -219,6 +315,39 @@ api.get("/apps/:appId/items/similar", async (context) => {
   return context.json({ data: candidates });
 });
 
+/**
+ * Permitted requests across every active application. Backs the cross-app views (overview,
+ * triage inbox, "my requests") which would otherwise need one call per application.
+ */
+api.get("/items", async (context) => {
+  const currentUser = context.get("user");
+  const statusFilter = context.req.query("status");
+  const statuses = statusFilter ? statusFilter.split(",").filter((value) => itemStatus.safeParse(value).success) : [];
+  if (statusFilter && statuses.length === 0) return context.json({ error: { code: "invalid_request", message: "Unknown status filter." } }, 400);
+
+  const client = getClient(context.env);
+  const result = await client.execute({
+    sql: `SELECT b.id, b.app_id AS appId, b.creator_id AS creatorId, b.title, b.description,
+            b.type, b.status, b.visibility, b.created_at AS createdAt, b.updated_at AS updatedAt,
+            a.name AS appName, a.logo_url AS appLogoUrl,
+            u.name AS creatorName, u.avatar_url AS creatorAvatarUrl, u.role AS creatorRole,
+            COUNT(DISTINCT v.user_id) AS votes,
+            MAX(CASE WHEN v.user_id = ? THEN 1 ELSE 0 END) AS voted,
+            COUNT(DISTINCT s.id) AS subtaskCount,
+            COUNT(DISTINCT CASE WHEN s.completed = 1 THEN s.id END) AS completedSubtasks
+          FROM backlog_items b
+          JOIN apps a ON a.id = b.app_id AND a.is_active = 1
+          JOIN users u ON u.id = b.creator_id
+          LEFT JOIN votes v ON v.item_id = b.id
+          LEFT JOIN subtasks s ON s.item_id = b.id
+          WHERE (b.visibility = 'shared' OR ? = 'admin')
+            ${statuses.length ? `AND b.status IN (${statuses.map(() => "?").join(", ")})` : ""}
+          GROUP BY b.id ORDER BY b.updated_at DESC`,
+    args: [currentUser.id, currentUser.role, ...statuses],
+  });
+  return context.json({ data: result.rows });
+});
+
 api.get("/items/:id", async (context) => {
   const currentUser = context.get("user");
   const client = getClient(context.env);
@@ -226,7 +355,7 @@ api.get("/items/:id", async (context) => {
   if (!item || !canReadItem(currentUser, item)) return context.json({ error: { code: "not_found", message: "Request not found." } }, 404);
   const detail = await client.execute({
     sql: `SELECT b.id, b.app_id AS appId, b.creator_id AS creatorId, b.title, b.description, b.type, b.status, b.visibility,
-            b.created_at AS createdAt, b.updated_at AS updatedAt, u.name AS creatorName, u.avatar_url AS creatorAvatarUrl,
+            b.created_at AS createdAt, b.updated_at AS updatedAt, u.name AS creatorName, u.avatar_url AS creatorAvatarUrl, u.role AS creatorRole,
             COUNT(v.user_id) AS votes, MAX(CASE WHEN v.user_id = ? THEN 1 ELSE 0 END) AS voted
           FROM backlog_items b JOIN users u ON u.id = b.creator_id LEFT JOIN votes v ON v.item_id = b.id
           WHERE b.id = ? GROUP BY b.id`,
@@ -264,8 +393,12 @@ api.patch("/items/:id", async (context) => {
   const item = await findItem(client, context.req.param("id"));
   if (!item || !canReadItem(currentUser, item)) return context.json({ error: { code: "not_found", message: "Request not found." } }, 404);
   if (!canEditItem(currentUser, item)) return context.json({ error: { code: "forbidden", message: "You cannot edit this request." } }, 403);
+  if (parsed.data.appId !== undefined) {
+    const target = await client.execute({ sql: "SELECT id FROM apps WHERE id = ? AND is_active = 1", args: [parsed.data.appId] });
+    if (target.rows.length === 0) return context.json({ error: { code: "invalid_request", message: "That application does not exist." } }, 400);
+  }
   const columns: Record<string, string | number | null | undefined> = { ...parsed.data, updatedAt: Date.now() };
-  const names: Record<string, string> = { title: "title", description: "description", type: "type", updatedAt: "updated_at" };
+  const names: Record<string, string> = { appId: "app_id", title: "title", description: "description", type: "type", updatedAt: "updated_at" };
   const entries = Object.entries(columns);
   await client.execute({ sql: `UPDATE backlog_items SET ${entries.map(([key]) => `${names[key]} = ?`).join(", ")} WHERE id = ?`, args: [...entries.map(([, value]) => value ?? null), item.id] });
   return context.json({ data: { id: item.id } });

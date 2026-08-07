@@ -6,7 +6,7 @@ const timestamp = (name: string) => integer(name).notNull().default(sql`(unixepo
 export const apps = sqliteTable("apps", {
   id: text("id").primaryKey(),
   name: text("name").notNull(),
-  icon: text("icon").notNull(),
+  logoUrl: text("logo_url"),
   description: text("description"),
   sortOrder: integer("sort_order").notNull().default(0),
   isActive: integer("is_active", { mode: "boolean" }).notNull().default(true),
@@ -20,6 +20,7 @@ export const users = sqliteTable("users", {
   name: text("name").notNull(),
   avatarUrl: text("avatar_url"),
   role: text("role", { enum: ["admin", "user"] }).notNull().default("user"),
+  isActive: integer("is_active", { mode: "boolean" }).notNull().default(true),
   createdAt: timestamp("created_at"),
   updatedAt: timestamp("updated_at"),
 }, (table) => [

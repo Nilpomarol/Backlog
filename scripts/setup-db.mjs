@@ -41,9 +41,9 @@ if (appliedMigrations === 0) console.log("Database schema is already up to date.
 const adminEmail = process.env.ADMIN_EMAIL?.trim().toLowerCase();
 if (adminEmail) {
   await client.execute({
-    sql: `INSERT INTO users (id, email, name, role, updated_at)
-          VALUES (?, ?, ?, 'admin', ?)
-          ON CONFLICT(email) DO UPDATE SET name = excluded.name, role = 'admin', updated_at = excluded.updated_at`,
+    sql: `INSERT INTO users (id, email, name, role, is_active, updated_at)
+          VALUES (?, ?, ?, 'admin', 1, ?)
+          ON CONFLICT(email) DO UPDATE SET name = excluded.name, role = 'admin', is_active = 1, updated_at = excluded.updated_at`,
     args: [crypto.randomUUID(), adminEmail, process.env.ADMIN_NAME?.trim() || "Administrator", Date.now()],
   });
   console.log(`Administrator invitation ready for ${adminEmail}.`);
@@ -52,14 +52,14 @@ if (adminEmail) {
 }
 
 const applicationSeeds = [
-  ["atlas", "Atlas", "A", "Explora països, cultures i el món que t’envolta.", 0],
-  ["homebase", "Homebase", "H", "Organització compartida per a la llar.", 1],
-  ["pocket-recipes", "Pocket Recipes", "P", "Receptes preferides sempre a mà.", 2],
+  ["atlas", "Atlas", "Explora països, cultures i el món que t’envolta.", 0],
+  ["homebase", "Homebase", "Organització compartida per a la llar.", 1],
+  ["pocket-recipes", "Pocket Recipes", "Receptes preferides sempre a mà.", 2],
 ];
 for (const application of applicationSeeds) {
   await client.execute({
-    sql: `INSERT INTO apps (id, name, icon, description, sort_order)
-          VALUES (?, ?, ?, ?, ?) ON CONFLICT(id) DO NOTHING`,
+    sql: `INSERT INTO apps (id, name, description, sort_order)
+          VALUES (?, ?, ?, ?) ON CONFLICT(id) DO NOTHING`,
     args: application,
   });
 }

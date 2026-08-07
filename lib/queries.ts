@@ -36,6 +36,8 @@ export const queryKeys = {
   apps: ["apps"] as const,
   managedApps: ["apps", "manage"] as const,
   users: ["users"] as const,
+  userApps: (userId: string) => ["access", "user", userId] as const,
+  appUsers: (appId: string) => ["access", "app", appId] as const,
   appItems: (appId: string) => ["items", "app", appId] as const,
   allItems: (status?: string) => ["items", "all", status ?? "any"] as const,
   request: (id: string) => ["request", id] as const,
@@ -167,6 +169,32 @@ export function useManagedUsers(enabled: boolean) {
     queryFn: async () => {
       const payload = await request<Envelope<Row[]>>("/users");
       return payload.data.map(toManagedUser) as ManagedUser[];
+    },
+  });
+}
+
+/** The app ids a single user has been granted access to. Admin-only. */
+export function useUserApps(userId: string | undefined, enabled: boolean) {
+  const { request, status } = useAuth();
+  return useQuery({
+    queryKey: queryKeys.userApps(userId ?? ""),
+    enabled: enabled && status === "ready" && !!userId,
+    queryFn: async () => {
+      const payload = await request<Envelope<string[]>>(`/users/${encodeURIComponent(userId!)}/apps`);
+      return payload.data;
+    },
+  });
+}
+
+/** The user ids granted access to a single app. Admin-only. */
+export function useAppUsers(appId: string | undefined, enabled: boolean) {
+  const { request, status } = useAuth();
+  return useQuery({
+    queryKey: queryKeys.appUsers(appId ?? ""),
+    enabled: enabled && status === "ready" && !!appId,
+    queryFn: async () => {
+      const payload = await request<Envelope<string[]>>(`/apps/${encodeURIComponent(appId!)}/users`);
+      return payload.data;
     },
   });
 }
@@ -452,6 +480,45 @@ export function useRemoveInvitation() {
 function invalidateApps(client: QueryClient) {
   void client.invalidateQueries({ queryKey: queryKeys.apps });
   void client.invalidateQueries({ queryKey: queryKeys.managedApps });
+}
+
+/** A grant change alters what the affected people can see, so refresh access, apps and items.
+ *  It also changes each person's access count in the People roster, so refresh the user list too. */
+function invalidateAccess(client: QueryClient) {
+  void client.invalidateQueries({ queryKey: ["access"] });
+  void client.invalidateQueries({ queryKey: queryKeys.users });
+  void client.invalidateQueries({ queryKey: queryKeys.apps });
+  void client.invalidateQueries({ queryKey: ["items"] });
+}
+
+/** Replace the full set of apps a user may access (People settings). */
+export function useSetUserApps() {
+  const { request } = useAuth();
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ userId, appIds }: { userId: string; appIds: string[] }) => {
+      await request(`/users/${encodeURIComponent(userId)}/apps`, { method: "PUT", body: JSON.stringify({ appIds }) });
+    },
+    onSuccess: (_data, { userId }) => {
+      void client.invalidateQueries({ queryKey: queryKeys.userApps(userId) });
+      invalidateAccess(client);
+    },
+  });
+}
+
+/** Replace the full set of users who may access an app (App settings). */
+export function useSetAppUsers() {
+  const { request } = useAuth();
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ appId, userIds }: { appId: string; userIds: string[] }) => {
+      await request(`/apps/${encodeURIComponent(appId)}/users`, { method: "PUT", body: JSON.stringify({ userIds }) });
+    },
+    onSuccess: (_data, { appId }) => {
+      void client.invalidateQueries({ queryKey: queryKeys.appUsers(appId) });
+      invalidateAccess(client);
+    },
+  });
 }
 
 export function useCreateApp() {

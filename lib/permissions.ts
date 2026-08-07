@@ -11,8 +11,14 @@ export type PermissionItem = {
   visibility: Visibility;
 };
 
-export function canReadItem(user: PermissionUser, item: PermissionItem) {
-  return user.role === "admin" || item.visibility === "shared";
+/**
+ * Whether the user may see a request. Admins see everything. A non-admin needs an explicit grant
+ * to the request's app (`hasAppAccess`) *and* the request must be shared. App access is resolved by
+ * the caller (from the `app_access` table) and passed in, so this stays a pure function.
+ */
+export function canReadItem(user: PermissionUser, item: PermissionItem, hasAppAccess: boolean) {
+  if (user.role === "admin") return true;
+  return hasAppAccess && item.visibility === "shared";
 }
 
 export function canEditItem(user: PermissionUser, item: PermissionItem) {

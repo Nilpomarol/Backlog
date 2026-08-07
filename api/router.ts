@@ -8,7 +8,7 @@ import { canChangeWorkflow, canDeleteItem, canEditItem, canManageSubtasks, canRe
 import { checkRateLimit } from "../lib/rate-limit";
 
 type AppUser = { id: string; email: string; name: string; avatarUrl: string | null; role: "admin" | "user" };
-type ItemRecord = { id: string; creatorId: string; visibility: Visibility; status: string };
+type ItemRecord = { id: string; appId: string; creatorId: string; visibility: Visibility; status: string };
 
 export type ApiEnvironment = DatabaseEnvironment & {
   FIREBASE_PROJECT_ID?: string;
@@ -137,7 +137,10 @@ api.patch("/me", async (context) => {
 api.get("/users", async (context) => {
   if (context.get("user").role !== "admin") return context.json({ error: { code: "forbidden", message: "Only administrators can manage users." } }, 403);
   const client = getClient(context.env);
-  const result = await client.execute("SELECT id, email, name, avatar_url AS avatarUrl, role, CASE WHEN is_active = 0 THEN 'revoked' WHEN firebase_uid IS NULL THEN 'pending' ELSE 'linked' END AS status FROM users ORDER BY is_active DESC, role, name");
+  const result = await client.execute(`SELECT id, email, name, avatar_url AS avatarUrl, role,
+      CASE WHEN is_active = 0 THEN 'revoked' WHEN firebase_uid IS NULL THEN 'pending' ELSE 'linked' END AS status,
+      (SELECT COUNT(*) FROM app_access aa WHERE aa.user_id = users.id) AS accessCount
+    FROM users ORDER BY is_active DESC, role, name`);
   return context.json({ data: result.rows });
 });
 
@@ -196,13 +199,15 @@ api.delete("/users/:id/invitation", async (context) => {
 api.get("/apps", async (context) => {
   const currentUser = context.get("user");
   const client = getClient(context.env);
+  // Admins see every active app; a non-admin only sees apps they have been granted access to.
+  const accessJoin = currentUser.role === "admin" ? "" : "JOIN app_access aa ON aa.app_id = a.id AND aa.user_id = ?";
   const result = await client.execute({
     sql: `SELECT a.id, a.name, a.logo_url AS logoUrl, a.description, a.sort_order AS sortOrder,
             COUNT(CASE WHEN b.status IN ('backlog','in_progress','in_review')
               AND (b.visibility = 'shared' OR ? = 'admin') THEN 1 END) AS activeItemCount
-          FROM apps a LEFT JOIN backlog_items b ON b.app_id = a.id
+          FROM apps a ${accessJoin} LEFT JOIN backlog_items b ON b.app_id = a.id
           WHERE a.is_active = 1 GROUP BY a.id ORDER BY a.sort_order, a.name`,
-    args: [currentUser.role],
+    args: currentUser.role === "admin" ? [currentUser.role] : [currentUser.role, currentUser.id],
   });
   return context.json({ data: result.rows });
 });
@@ -276,9 +281,67 @@ api.delete("/apps/:id", async (context) => {
   return context.body(null, 204);
 });
 
+// --- Per-app access grants (admin only) ---------------------------------------------------
+// Access is a set of (app, user) rows. Both management screens edit the same table: the People
+// screen replaces the apps for one user, the Apps screen replaces the users for one app. Writes
+// are replace-set (delete-then-insert) so the client sends the full desired membership.
+
+const accessAppIdsSchema = z.object({ appIds: z.array(z.string().min(1).max(80)).max(200) }).strict();
+const accessUserIdsSchema = z.object({ userIds: z.array(z.string().min(1).max(80)).max(500) }).strict();
+
+api.get("/users/:id/apps", async (context) => {
+  if (context.get("user").role !== "admin") return context.json({ error: { code: "forbidden", message: "Only administrators can manage access." } }, 403);
+  const client = getClient(context.env);
+  const result = await client.execute({ sql: "SELECT app_id AS appId FROM app_access WHERE user_id = ?", args: [context.req.param("id")] });
+  return context.json({ data: result.rows.map((row) => String(row.appId)) });
+});
+
+api.put("/users/:id/apps", async (context) => {
+  if (context.get("user").role !== "admin") return context.json({ error: { code: "forbidden", message: "Only administrators can manage access." } }, 403);
+  const parsed = accessAppIdsSchema.safeParse(await context.req.json().catch(() => null));
+  if (!parsed.success) return context.json({ error: { code: "invalid_request", message: parsed.error.issues[0]?.message } }, 400);
+  const userId = context.req.param("id");
+  const client = getClient(context.env);
+  const target = await client.execute({ sql: "SELECT id FROM users WHERE id = ?", args: [userId] });
+  if (target.rows.length === 0) return context.json({ error: { code: "not_found", message: "User not found." } }, 404);
+  const appIds = [...new Set(parsed.data.appIds)];
+  const now = Date.now();
+  await client.batch([
+    { sql: "DELETE FROM app_access WHERE user_id = ?", args: [userId] },
+    // The EXISTS guard silently drops ids for apps that no longer exist, avoiding orphan grants.
+    ...appIds.map((appId) => ({ sql: "INSERT INTO app_access (app_id, user_id, created_at) SELECT ?, ?, ? WHERE EXISTS (SELECT 1 FROM apps WHERE id = ?)", args: [appId, userId, now, appId] })),
+  ], "write");
+  return context.json({ data: { appIds } });
+});
+
+api.get("/apps/:id/users", async (context) => {
+  if (context.get("user").role !== "admin") return context.json({ error: { code: "forbidden", message: "Only administrators can manage access." } }, 403);
+  const client = getClient(context.env);
+  const result = await client.execute({ sql: "SELECT user_id AS userId FROM app_access WHERE app_id = ?", args: [context.req.param("id")] });
+  return context.json({ data: result.rows.map((row) => String(row.userId)) });
+});
+
+api.put("/apps/:id/users", async (context) => {
+  if (context.get("user").role !== "admin") return context.json({ error: { code: "forbidden", message: "Only administrators can manage access." } }, 403);
+  const parsed = accessUserIdsSchema.safeParse(await context.req.json().catch(() => null));
+  if (!parsed.success) return context.json({ error: { code: "invalid_request", message: parsed.error.issues[0]?.message } }, 400);
+  const appId = context.req.param("id");
+  const client = getClient(context.env);
+  const target = await client.execute({ sql: "SELECT id FROM apps WHERE id = ?", args: [appId] });
+  if (target.rows.length === 0) return context.json({ error: { code: "not_found", message: "Application not found." } }, 404);
+  const userIds = [...new Set(parsed.data.userIds)];
+  const now = Date.now();
+  await client.batch([
+    { sql: "DELETE FROM app_access WHERE app_id = ?", args: [appId] },
+    ...userIds.map((userId) => ({ sql: "INSERT INTO app_access (app_id, user_id, created_at) SELECT ?, ?, ? WHERE EXISTS (SELECT 1 FROM users WHERE id = ?)", args: [appId, userId, now, userId] })),
+  ], "write");
+  return context.json({ data: { userIds } });
+});
+
 api.get("/apps/:appId/items", async (context) => {
   const currentUser = context.get("user");
   const client = getClient(context.env);
+  if (!(await canAccessApp(client, currentUser, context.req.param("appId")))) return context.json({ error: { code: "not_found", message: "Application not found." } }, 404);
   const result = await client.execute({
     sql: `SELECT b.id, b.app_id AS appId, b.creator_id AS creatorId, b.title, b.description,
             b.type, b.status, b.visibility, b.created_at AS createdAt, b.updated_at AS updatedAt,
@@ -303,6 +366,7 @@ api.get("/apps/:appId/items/similar", async (context) => {
   if (title.length < 3) return context.json({ data: [] });
   const currentUser = context.get("user");
   const client = getClient(context.env);
+  if (!(await canAccessApp(client, currentUser, context.req.param("appId")))) return context.json({ data: [] });
   const result = await client.execute({
     sql: `SELECT b.id, b.title, b.type, COUNT(v.user_id) AS votes
           FROM backlog_items b LEFT JOIN votes v ON v.item_id = b.id
@@ -341,9 +405,10 @@ api.get("/items", async (context) => {
           LEFT JOIN votes v ON v.item_id = b.id
           LEFT JOIN subtasks s ON s.item_id = b.id
           WHERE (b.visibility = 'shared' OR ? = 'admin')
+            ${currentUser.role === "admin" ? "" : "AND EXISTS (SELECT 1 FROM app_access aa WHERE aa.app_id = b.app_id AND aa.user_id = ?)"}
             ${statuses.length ? `AND b.status IN (${statuses.map(() => "?").join(", ")})` : ""}
           GROUP BY b.id ORDER BY b.updated_at DESC`,
-    args: [currentUser.id, currentUser.role, ...statuses],
+    args: [currentUser.id, currentUser.role, ...(currentUser.role === "admin" ? [] : [currentUser.id]), ...statuses],
   });
   return context.json({ data: result.rows });
 });
@@ -352,7 +417,7 @@ api.get("/items/:id", async (context) => {
   const currentUser = context.get("user");
   const client = getClient(context.env);
   const item = await findItem(client, context.req.param("id"));
-  if (!item || !canReadItem(currentUser, item)) return context.json({ error: { code: "not_found", message: "Request not found." } }, 404);
+  if (!item || !canReadItem(currentUser, item, await canAccessApp(client, currentUser, item.appId))) return context.json({ error: { code: "not_found", message: "Request not found." } }, 404);
   const detail = await client.execute({
     sql: `SELECT b.id, b.app_id AS appId, b.creator_id AS creatorId, b.title, b.description, b.type, b.status, b.visibility,
             b.created_at AS createdAt, b.updated_at AS updatedAt, u.name AS creatorName, u.avatar_url AS creatorAvatarUrl, u.role AS creatorRole,
@@ -375,6 +440,7 @@ api.post("/items", async (context) => {
   if (parsed.data.visibility === "internal" && currentUser.role !== "admin") return context.json({ error: { code: "forbidden", message: "Only administrators can create internal requests." } }, 403);
 
   const client = getClient(context.env);
+  if (!(await canAccessApp(client, currentUser, parsed.data.appId))) return context.json({ error: { code: "forbidden", message: "You do not have access to this application." } }, 403);
   const id = crypto.randomUUID();
   const now = Date.now();
   await client.execute({
@@ -391,11 +457,12 @@ api.patch("/items/:id", async (context) => {
   const currentUser = context.get("user");
   const client = getClient(context.env);
   const item = await findItem(client, context.req.param("id"));
-  if (!item || !canReadItem(currentUser, item)) return context.json({ error: { code: "not_found", message: "Request not found." } }, 404);
+  if (!item || !canReadItem(currentUser, item, await canAccessApp(client, currentUser, item.appId))) return context.json({ error: { code: "not_found", message: "Request not found." } }, 404);
   if (!canEditItem(currentUser, item)) return context.json({ error: { code: "forbidden", message: "You cannot edit this request." } }, 403);
   if (parsed.data.appId !== undefined) {
     const target = await client.execute({ sql: "SELECT id FROM apps WHERE id = ? AND is_active = 1", args: [parsed.data.appId] });
     if (target.rows.length === 0) return context.json({ error: { code: "invalid_request", message: "That application does not exist." } }, 400);
+    if (!(await canAccessApp(client, currentUser, parsed.data.appId))) return context.json({ error: { code: "forbidden", message: "You do not have access to this application." } }, 403);
   }
   const columns: Record<string, string | number | null | undefined> = { ...parsed.data, updatedAt: Date.now() };
   const names: Record<string, string> = { appId: "app_id", title: "title", description: "description", type: "type", updatedAt: "updated_at" };
@@ -432,7 +499,7 @@ api.delete("/items/:id", async (context) => {
   const currentUser = context.get("user");
   const client = getClient(context.env);
   const item = await findItem(client, context.req.param("id"));
-  if (!item || !canReadItem(currentUser, item)) return context.json({ error: { code: "not_found", message: "Request not found." } }, 404);
+  if (!item || !canReadItem(currentUser, item, await canAccessApp(client, currentUser, item.appId))) return context.json({ error: { code: "not_found", message: "Request not found." } }, 404);
   if (!canDeleteItem(currentUser, item)) return context.json({ error: { code: "forbidden", message: "You cannot delete this request." } }, 403);
   await client.execute({ sql: "DELETE FROM backlog_items WHERE id = ?", args: [item.id] });
   return context.body(null, 204);
@@ -442,7 +509,7 @@ api.post("/items/:id/vote", async (context) => {
   const currentUser = context.get("user");
   const client = getClient(context.env);
   const item = await findItem(client, context.req.param("id"));
-  if (!item || !canReadItem(currentUser, item)) return context.json({ error: { code: "not_found", message: "Request not found." } }, 404);
+  if (!item || !canReadItem(currentUser, item, await canAccessApp(client, currentUser, item.appId))) return context.json({ error: { code: "not_found", message: "Request not found." } }, 404);
   if (!canVote(currentUser, item)) return context.json({ error: { code: "forbidden", message: "You cannot vote for this request." } }, 403);
   await client.execute({ sql: "INSERT INTO votes (item_id, user_id, created_at) VALUES (?, ?, ?) ON CONFLICT DO NOTHING", args: [item.id, currentUser.id, Date.now()] });
   return context.json({ data: { voted: true } });
@@ -461,7 +528,7 @@ api.post("/items/:id/subtasks", async (context) => {
   const currentUser = context.get("user");
   const client = getClient(context.env);
   const item = await findItem(client, context.req.param("id"));
-  if (!item || !canReadItem(currentUser, item)) return context.json({ error: { code: "not_found", message: "Request not found." } }, 404);
+  if (!item || !canReadItem(currentUser, item, await canAccessApp(client, currentUser, item.appId))) return context.json({ error: { code: "not_found", message: "Request not found." } }, 404);
   if (!canManageSubtasks(currentUser, item)) return context.json({ error: { code: "forbidden", message: "You cannot manage subtasks for this request." } }, 403);
   const positionResult = await client.execute({ sql: "SELECT COALESCE(MAX(position), -1) + 1 AS position FROM subtasks WHERE item_id = ?", args: [item.id] });
   const id = crypto.randomUUID();
@@ -476,7 +543,7 @@ api.patch("/subtasks/:id", async (context) => {
   const currentUser = context.get("user");
   const client = getClient(context.env);
   const record = await findSubtask(client, context.req.param("id"));
-  if (!record || !canReadItem(currentUser, record.item)) return context.json({ error: { code: "not_found", message: "Subtask not found." } }, 404);
+  if (!record || !canReadItem(currentUser, record.item, await canAccessApp(client, currentUser, record.item.appId))) return context.json({ error: { code: "not_found", message: "Subtask not found." } }, 404);
   if (!canManageSubtasks(currentUser, record.item)) return context.json({ error: { code: "forbidden", message: "You cannot manage this subtask." } }, 403);
   const updates: [string, string | number][] = [];
   if (parsed.data.title !== undefined) updates.push(["title", parsed.data.title]);
@@ -490,7 +557,7 @@ api.delete("/subtasks/:id", async (context) => {
   const currentUser = context.get("user");
   const client = getClient(context.env);
   const record = await findSubtask(client, context.req.param("id"));
-  if (!record || !canReadItem(currentUser, record.item)) return context.json({ error: { code: "not_found", message: "Subtask not found." } }, 404);
+  if (!record || !canReadItem(currentUser, record.item, await canAccessApp(client, currentUser, record.item.appId))) return context.json({ error: { code: "not_found", message: "Subtask not found." } }, 404);
   if (!canManageSubtasks(currentUser, record.item)) return context.json({ error: { code: "forbidden", message: "You cannot manage this subtask." } }, 403);
   await client.execute({ sql: "DELETE FROM subtasks WHERE id = ?", args: [record.id] });
   return context.body(null, 204);
@@ -502,7 +569,7 @@ api.put("/items/:id/subtasks/order", async (context) => {
   const currentUser = context.get("user");
   const client = getClient(context.env);
   const item = await findItem(client, context.req.param("id"));
-  if (!item || !canReadItem(currentUser, item)) return context.json({ error: { code: "not_found", message: "Request not found." } }, 404);
+  if (!item || !canReadItem(currentUser, item, await canAccessApp(client, currentUser, item.appId))) return context.json({ error: { code: "not_found", message: "Request not found." } }, 404);
   if (!canManageSubtasks(currentUser, item)) return context.json({ error: { code: "forbidden", message: "You cannot reorder these subtasks." } }, 403);
   const existing = await client.execute({ sql: "SELECT id FROM subtasks WHERE item_id = ? ORDER BY position", args: [item.id] });
   const existingIds = existing.rows.map((row) => String(row.id)).sort();
@@ -513,21 +580,31 @@ api.put("/items/:id/subtasks/order", async (context) => {
 });
 
 async function findItem(client: ReturnType<typeof getClient>, id: string): Promise<ItemRecord | null> {
-  const result = await client.execute({ sql: "SELECT id, creator_id, visibility, status FROM backlog_items WHERE id = ?", args: [id] });
+  const result = await client.execute({ sql: "SELECT id, app_id, creator_id, visibility, status FROM backlog_items WHERE id = ?", args: [id] });
   const row = result.rows[0];
   if (!row) return null;
-  return { id: String(row.id), creatorId: String(row.creator_id), visibility: String(row.visibility) as Visibility, status: String(row.status) };
+  return { id: String(row.id), appId: String(row.app_id), creatorId: String(row.creator_id), visibility: String(row.visibility) as Visibility, status: String(row.status) };
 }
 
 async function findSubtask(client: ReturnType<typeof getClient>, id: string) {
   const result = await client.execute({
-    sql: `SELECT s.id, b.id AS item_id, b.creator_id, b.visibility, b.status
+    sql: `SELECT s.id, b.id AS item_id, b.app_id, b.creator_id, b.visibility, b.status
           FROM subtasks s JOIN backlog_items b ON b.id = s.item_id WHERE s.id = ?`,
     args: [id],
   });
   const row = result.rows[0];
   if (!row) return null;
-  return { id: String(row.id), item: { id: String(row.item_id), creatorId: String(row.creator_id), visibility: String(row.visibility) as Visibility, status: String(row.status) } satisfies ItemRecord };
+  return { id: String(row.id), item: { id: String(row.item_id), appId: String(row.app_id), creatorId: String(row.creator_id), visibility: String(row.visibility) as Visibility, status: String(row.status) } satisfies ItemRecord };
+}
+
+/**
+ * Whether `user` may access `appId`. Admins can reach every app; a non-admin needs a row in
+ * `app_access`. This backs the single-item routes; list routes filter with a JOIN instead.
+ */
+async function canAccessApp(client: ReturnType<typeof getClient>, user: AppUser, appId: string): Promise<boolean> {
+  if (user.role === "admin") return true;
+  const result = await client.execute({ sql: "SELECT 1 FROM app_access WHERE app_id = ? AND user_id = ? LIMIT 1", args: [appId, user.id] });
+  return result.rows.length > 0;
 }
 
 export function normalizeTitle(value: string) {

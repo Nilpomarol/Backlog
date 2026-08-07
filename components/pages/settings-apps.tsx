@@ -1,17 +1,27 @@
 "use client";
 
 import { getDownloadURL, ref, uploadBytes } from "firebase/storage";
-import { Archive, ArrowDown, ArrowUp, LayoutGrid, MoreHorizontal, Pencil, Plus, RotateCcw, Trash2, Upload } from "lucide-react";
+import { Archive, ArrowDown, ArrowUp, KeyRound, LayoutGrid, MoreHorizontal, Pencil, Plus, RotateCcw, Trash2, Upload } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useEffect, useRef, useState, type ChangeEvent, type FormEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type ChangeEvent, type FormEvent } from "react";
 import { getFirebaseStorage } from "../../lib/firebase-client";
 import type { ManagedApplication } from "../../lib/domain";
-import { useCreateApp, useDeleteApp, useErrorMessage, useManagedApps, useUpdateApp } from "../../lib/queries";
+import {
+  useAppUsers,
+  useCreateApp,
+  useDeleteApp,
+  useErrorMessage,
+  useManagedApps,
+  useManagedUsers,
+  useSetAppUsers,
+  useUpdateApp,
+} from "../../lib/queries";
 import { useAuth, useT } from "../providers";
-import { AppIcon, Button, IconButton, SkeletonList, TextAreaField, TextField } from "../ui/primitives";
+import { AppIcon, Avatar, Button, IconButton, SkeletonList, TextAreaField, TextField } from "../ui/primitives";
 import { ConfirmDialog, Menu, MenuItem, MenuSeparator, Sheet } from "../ui/overlay";
 import { EmptyState, ErrorState } from "../ui/states";
 import { useToast } from "../ui/toast";
+import { AccessSheet } from "./access-sheet";
 import { SettingsNav } from "./settings-nav";
 
 const LOGO_MAX_BYTES = 2 * 1024 * 1024;
@@ -66,10 +76,12 @@ export function AppsSettingsPage() {
   }, [authStatus, isAdmin, router]);
 
   const { data: apps, isPending, isError, error, refetch } = useManagedApps(!!isAdmin);
+  const { data: people } = useManagedUsers(!!isAdmin);
   const describeError = useErrorMessage();
   const createApp = useCreateApp();
   const updateApp = useUpdateApp();
   const deleteApp = useDeleteApp();
+  const setAppUsers = useSetAppUsers();
   const { toast } = useToast();
 
   const [formOpen, setFormOpen] = useState(false);
@@ -82,7 +94,24 @@ export function AppsSettingsPage() {
   const [reordering, setReordering] = useState(false);
   const [showLogoUrlField, setShowLogoUrlField] = useState(false);
   const [uploadingLogo, setUploadingLogo] = useState(false);
+  const [accessApp, setAccessApp] = useState<ManagedApplication | null>(null);
   const logoFileInputRef = useRef<HTMLInputElement>(null);
+
+  const { data: grantedUsers, isPending: grantsPending } = useAppUsers(accessApp?.id, !!accessApp);
+  // Admins already reach every app, so only non-admin members are worth granting per-app.
+  const userOptions = useMemo(
+    () =>
+      [...(people ?? [])]
+        .filter((person) => person.role === "user" && person.status !== "revoked")
+        .sort((a, b) => a.name.localeCompare(b.name))
+        .map((person) => ({
+          id: person.id,
+          primary: person.name,
+          secondary: person.email,
+          media: <Avatar name={person.name} url={person.avatarUrl} size="md" />,
+        })),
+    [people],
+  );
 
   const onError = (failure: unknown) => toast(describeError(failure), { tone: "error" });
 
@@ -208,6 +237,9 @@ export function AppsSettingsPage() {
           <>
             <MenuItem icon={<Pencil size={15} aria-hidden="true" />} onClick={() => { close(); openEdit(app); }}>
               {t.editApp}
+            </MenuItem>
+            <MenuItem icon={<KeyRound size={15} aria-hidden="true" />} onClick={() => { close(); setAccessApp(app); }}>
+              {t.manageAccess}
             </MenuItem>
             {app.isActive ? (
               <MenuItem
@@ -450,6 +482,38 @@ export function AppsSettingsPage() {
           />
         </form>
       </Sheet>
+
+      <AccessSheet
+        open={!!accessApp}
+        onClose={() => setAccessApp(null)}
+        title={accessApp ? `${t.manageAccess} · ${accessApp.name}` : t.manageAccess}
+        subtitle={t.manageAccessForAppSubtitle}
+        options={userOptions}
+        initialSelected={grantedUsers}
+        loading={grantsPending}
+        saving={setAppUsers.isPending}
+        copy={{
+          save: t.saveChanges,
+          cancel: t.cancel,
+          close: t.close,
+          loading: t.loading,
+          empty: t.noPeopleToGrant,
+          selectedCount: (count) => t.peopleSelected(count),
+        }}
+        onSave={(userIds) => {
+          if (!accessApp) return;
+          setAppUsers.mutate(
+            { appId: accessApp.id, userIds },
+            {
+              onError,
+              onSuccess: () => {
+                toast(t.toastAccessChanged);
+                setAccessApp(null);
+              },
+            },
+          );
+        }}
+      />
 
       <ConfirmDialog
         open={!!archiveTarget}

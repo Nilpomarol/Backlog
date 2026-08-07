@@ -12,7 +12,12 @@ export type Profile = {
   role: Role;
 };
 
-export type ManagedUser = Profile & { status: InvitationStatus };
+export type ManagedUser = Profile & {
+  status: InvitationStatus;
+  /** How many apps this person has been granted access to. Admins reach every app, so this is not
+   *  meaningful for them and the UI shows their role instead. */
+  accessCount: number;
+};
 
 export type Application = {
   id: string;

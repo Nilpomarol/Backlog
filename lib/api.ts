@@ -157,6 +157,7 @@ export function toManagedUser(row: Row): ManagedUser {
     avatarUrl: nullableStr(row.avatarUrl),
     role: str(row.role) === "admin" ? "admin" : "user",
     status: str(row.status) as ManagedUser["status"],
+    accessCount: num(row.accessCount),
   };
 }
 

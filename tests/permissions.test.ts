@@ -16,9 +16,17 @@ const internal = { creatorId: admin.id, visibility: "internal" as const };
 
 describe("card permissions", () => {
   it("keeps internal cards visible only to administrators", () => {
-    expect(canReadItem(admin, internal)).toBe(true);
-    expect(canReadItem(owner, internal)).toBe(false);
-    expect(canReadItem(other, internal)).toBe(false);
+    expect(canReadItem(admin, internal, false)).toBe(true);
+    expect(canReadItem(owner, internal, true)).toBe(false);
+    expect(canReadItem(other, internal, true)).toBe(false);
+  });
+
+  it("gates shared cards behind per-app access for non-admins", () => {
+    expect(canReadItem(other, shared, true)).toBe(true);
+    expect(canReadItem(other, shared, false)).toBe(false);
+    expect(canReadItem(owner, shared, false)).toBe(false);
+    // Admins see the card regardless of any app grant.
+    expect(canReadItem(admin, shared, false)).toBe(true);
   });
 
   it("lets an owner edit and delete only their own card", () => {

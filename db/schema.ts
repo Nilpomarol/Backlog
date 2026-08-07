@@ -29,6 +29,17 @@ export const users = sqliteTable("users", {
   check("users_role_check", sql`${table.role} in ('admin', 'user')`),
 ]);
 
+// Per-person, per-app access grants. A non-admin user may only see and act within apps for which
+// a row exists here. Admins bypass this table entirely (they see every app). No row means no access.
+export const appAccess = sqliteTable("app_access", {
+  appId: text("app_id").notNull().references(() => apps.id, { onDelete: "cascade" }),
+  userId: text("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  createdAt: timestamp("created_at"),
+}, (table) => [
+  primaryKey({ columns: [table.appId, table.userId] }),
+  index("idx_app_access_user").on(table.userId),
+]);
+
 export const backlogItems = sqliteTable("backlog_items", {
   id: text("id").primaryKey(),
   appId: text("app_id").notNull().references(() => apps.id, { onDelete: "cascade" }),

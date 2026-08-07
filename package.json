@@ -1,0 +1,66 @@
+{
+  "name": "shared-app-backlog",
+  "version": "0.1.0",
+  "private": true,
+  "engines": {
+    "node": ">=22.13.0"
+  },
+  "scripts": {
+    "dev": "node scripts/sync-dev-vars.mjs && vinext dev",
+    "build": "vinext build",
+    "start": "vinext start",
+    "preview": "npm run build && vite preview",
+    "deploy": "vinext deploy",
+    "deploy:upload": "wrangler deploy",
+    "deploy:preview": "wrangler versions upload",
+    "deploy:dry-run": "npm run build && wrangler deploy --dry-run --outdir .wrangler/dry-run",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run --config vitest.config.ts && npm run build && node --test tests/rendered-html.test.mjs",
+    "lint": "eslint . --ignore-pattern dist --ignore-pattern .next --ignore-pattern .wrangler",
+    "db:generate": "drizzle-kit generate",
+    "db:setup": "node scripts/setup-db.mjs",
+    "db:studio": "drizzle-kit studio",
+    "user:invite": "node scripts/invite-user.mjs",
+    "user:list": "node scripts/list-users.mjs"
+  },
+  "dependencies": {
+    "@hookform/resolvers": "^5.7.1",
+    "@libsql/client": "^0.17.4",
+    "@tanstack/react-query": "^5.101.4",
+    "drizzle-orm": "0.45.2",
+    "firebase": "^12.17.1",
+    "hono": "^4.13.0",
+    "jose": "^6.2.8",
+    "lucide-react": "^1.29.0",
+    "next": "^16.3.0",
+    "react": "19.2.8",
+    "react-dom": "19.2.8",
+    "react-hook-form": "^7.84.0",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@cloudflare/vite-plugin": "1.51.0",
+    "@tailwindcss/postcss": "4.2.1",
+    "@types/node": "22.19.19",
+    "@types/react": "19.2.14",
+    "@types/react-dom": "19.2.3",
+    "@vitejs/plugin-react": "6.0.2",
+    "@vitejs/plugin-rsc": "0.5.26",
+    "drizzle-kit": "0.31.10",
+    "eslint": "9.39.4",
+    "eslint-config-next": "16.3.0",
+    "react-server-dom-webpack": "19.2.8",
+    "tailwindcss": "4.2.1",
+    "typescript": "5.9.3",
+    "vinext": "0.0.50",
+    "vite": "8.2.1",
+    "vitest": "^4.1.10",
+    "wrangler": "4.114.0"
+  },
+  "overrides": {
+    "esbuild": "0.25.12",
+    "undici": "7.29.0",
+    "ws": "8.21.0"
+  },
+  "type": "module"
+}

@@ -401,10 +401,22 @@ export function useCreateChildRequest() {
   const { request } = useAuth();
   const client = useQueryClient();
   return useMutation({
-    mutationFn: async ({ requestId, title }: { requestId: string; title: string }) => {
+    mutationFn: async ({
+      requestId,
+      title,
+      description,
+      type,
+      priority,
+    }: {
+      requestId: string;
+      title: string;
+      description?: string;
+      type?: ItemType;
+      priority?: ItemPriority;
+    }) => {
       const payload = await request<Envelope<{ id: string }>>(`/items/${encodeURIComponent(requestId)}/children`, {
         method: "POST",
-        body: JSON.stringify({ title }),
+        body: JSON.stringify({ title, description, type, priority }),
       });
       return payload.data;
     },

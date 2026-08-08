@@ -1003,7 +1003,10 @@ ul, ol { margin: 0; padding: 0; list-style: none; }
 /* Sits above the row's card-link overlay so the delete button stays clickable, same as
    .card-overlay is used elsewhere. */
 .subtask-actions { position: relative; z-index: 1; display: flex; align-items: center; gap: 2px; flex-shrink: 0; }
-.subtask-add { display: flex; align-items: center; gap: var(--space-2); margin-top: var(--space-3); }
+.subtask-add { display: flex; flex-direction: column; gap: var(--space-2); margin-top: var(--space-3); }
+.subtask-add-row { display: flex; align-items: center; gap: var(--space-2); }
+.subtask-add .disclosure-trigger { margin-top: 0; padding-top: var(--space-2); }
+.subtask-add .type-picker { margin-bottom: var(--space-3); }
 
 /* ==========================================================================
    Tiles (app entries on the overview)

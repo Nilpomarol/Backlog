@@ -38,13 +38,6 @@ export type ManagedApplication = {
   itemCount: number;
 };
 
-export type Subtask = {
-  id: string;
-  title: string;
-  completed: boolean;
-  position: number;
-};
-
 export type RequestSummary = {
   id: string;
   appId: string;
@@ -53,6 +46,8 @@ export type RequestSummary = {
   type: ItemType;
   status: ItemStatus;
   visibility: Visibility;
+  parentId: string | null;
+  parentTitle: string | null;
   creatorId: string;
   creatorName: string;
   creatorAvatarUrl: string | null;
@@ -65,7 +60,10 @@ export type RequestSummary = {
   updatedAt: number;
 };
 
-export type RequestDetail = RequestSummary & { subtasks: Subtask[] };
+export type RequestDetail = RequestSummary & {
+  children: RequestSummary[];
+  parent: { id: string; title: string } | null;
+};
 
 export type SimilarRequest = {
   id: string;

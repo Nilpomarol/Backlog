@@ -24,7 +24,6 @@ import type {
   RequestSummary,
   Role,
   SimilarRequest,
-  Subtask,
   Visibility,
 } from "./domain";
 
@@ -128,7 +127,7 @@ export function useRequest(id: string | undefined) {
     enabled: status === "ready" && !!id,
     retry: false,
     queryFn: async () => {
-      const payload = await request<Envelope<Row & { subtasks: Row[] }>>(`/items/${encodeURIComponent(id!)}`);
+      const payload = await request<Envelope<Row & { children: Row[] }>>(`/items/${encodeURIComponent(id!)}`);
       return toRequestDetail(payload.data);
     },
   });
@@ -235,38 +234,6 @@ export function useVote() {
       if (context?.previousDetail) client.setQueryData(queryKeys.request(context.id), context.previousDetail);
     },
     onSettled: (_data, _error, { id }) => invalidateRequestData(client, id),
-  });
-}
-
-type SubtaskToggleInput = { requestId: string; subtaskId: string; completed: boolean };
-
-export function useToggleSubtask() {
-  const { request } = useAuth();
-  const client = useQueryClient();
-
-  return useMutation({
-    mutationFn: async ({ subtaskId, completed }: SubtaskToggleInput) => {
-      await request(`/subtasks/${encodeURIComponent(subtaskId)}`, {
-        method: "PATCH",
-        body: JSON.stringify({ completed }),
-      });
-    },
-    onMutate: async ({ requestId, subtaskId, completed }: SubtaskToggleInput) => {
-      await client.cancelQueries({ queryKey: queryKeys.request(requestId) });
-      const previous = client.getQueryData<RequestDetail>(queryKeys.request(requestId));
-      client.setQueryData<RequestDetail>(queryKeys.request(requestId), (detail) => {
-        if (!detail) return detail;
-        const subtasks = detail.subtasks.map((subtask) =>
-          subtask.id === subtaskId ? { ...subtask, completed } : subtask,
-        );
-        return { ...detail, subtasks, completedSubtasks: subtasks.filter((item) => item.completed).length };
-      });
-      return { previous, requestId };
-    },
-    onError: (_error, _input, context) => {
-      if (context?.previous) client.setQueryData(queryKeys.request(context.requestId), context.previous);
-    },
-    onSettled: (_data, _error, { requestId }) => invalidateRequestData(client, requestId),
   });
 }
 
@@ -405,115 +372,22 @@ export function useDeleteRequest() {
   });
 }
 
-// --- Subtask writes -----------------------------------------------------------------------
+// --- Child (subtask) card writes ------------------------------------------------------------
 
-/** Rewrites a request's subtask list (detail view + the summary counts mirrored in every list
- *  cache) and snapshots the prior state so a failed write can be rolled back. */
-async function patchSubtaskCaches(client: QueryClient, requestId: string, updater: (subtasks: Subtask[]) => Subtask[]) {
-  await client.cancelQueries({ queryKey: queryKeys.request(requestId) });
-  const previous = client.getQueryData<RequestDetail>(queryKeys.request(requestId));
-
-  client.setQueryData<RequestDetail>(queryKeys.request(requestId), (detail) => {
-    if (!detail) return detail;
-    const subtasks = updater(detail.subtasks);
-    return { ...detail, subtasks, completedSubtasks: subtasks.filter((item) => item.completed).length };
-  });
-  const nextSubtasks = updater(previous?.subtasks ?? []);
-  client.setQueriesData<RequestSummary[]>({ queryKey: ["items"] }, (list) =>
-    list?.map((item) =>
-      item.id === requestId
-        ? { ...item, subtaskCount: nextSubtasks.length, completedSubtasks: nextSubtasks.filter((s) => s.completed).length }
-        : item,
-    ),
-  );
-
-  return { previous, requestId };
-}
-
-function restoreSubtaskCaches(client: QueryClient, context: { previous?: RequestDetail; requestId: string } | undefined) {
-  if (!context) return;
-  if (context.previous) client.setQueryData(queryKeys.request(context.requestId), context.previous);
-  client.setQueriesData<RequestSummary[]>({ queryKey: ["items"] }, (list) =>
-    list?.map((item) =>
-      item.id === context.requestId && context.previous
-        ? { ...item, subtaskCount: context.previous.subtasks.length, completedSubtasks: context.previous.completedSubtasks }
-        : item,
-    ),
-  );
-}
-
-export function useAddSubtask() {
+/** Creates a linked subtask card under a parent request. No optimistic patch — the new card's
+ *  id comes from the server, and it needs a full row (status, votes, etc.) to render. */
+export function useCreateChildRequest() {
   const { request } = useAuth();
   const client = useQueryClient();
   return useMutation({
     mutationFn: async ({ requestId, title }: { requestId: string; title: string }) => {
-      await request(`/items/${encodeURIComponent(requestId)}/subtasks`, {
+      const payload = await request<Envelope<{ id: string }>>(`/items/${encodeURIComponent(requestId)}/children`, {
         method: "POST",
         body: JSON.stringify({ title }),
       });
+      return payload.data;
     },
-    onMutate: async ({ requestId, title }: { requestId: string; title: string }) => {
-      const tempId = `temp-${crypto.randomUUID()}`;
-      return patchSubtaskCaches(client, requestId, (subtasks) => [
-        ...subtasks,
-        { id: tempId, title, completed: false, position: subtasks.length },
-      ]);
-    },
-    onError: (_error, _input, context) => restoreSubtaskCaches(client, context),
-    onSettled: (_data, _error, { requestId }) => invalidateRequestData(client, requestId),
-  });
-}
-
-export function useRenameSubtask() {
-  const { request } = useAuth();
-  const client = useQueryClient();
-  return useMutation({
-    mutationFn: async ({ subtaskId, title }: { requestId: string; subtaskId: string; title: string }) => {
-      await request(`/subtasks/${encodeURIComponent(subtaskId)}`, {
-        method: "PATCH",
-        body: JSON.stringify({ title }),
-      });
-    },
-    onMutate: async ({ requestId, subtaskId, title }: { requestId: string; subtaskId: string; title: string }) =>
-      patchSubtaskCaches(client, requestId, (subtasks) =>
-        subtasks.map((subtask) => (subtask.id === subtaskId ? { ...subtask, title } : subtask)),
-      ),
-    onError: (_error, _input, context) => restoreSubtaskCaches(client, context),
-    onSettled: (_data, _error, { requestId }) => invalidateRequestData(client, requestId),
-  });
-}
-
-export function useDeleteSubtask() {
-  const { request } = useAuth();
-  const client = useQueryClient();
-  return useMutation({
-    mutationFn: async ({ subtaskId }: { requestId: string; subtaskId: string }) => {
-      await request(`/subtasks/${encodeURIComponent(subtaskId)}`, { method: "DELETE" });
-    },
-    onMutate: async ({ requestId, subtaskId }: { requestId: string; subtaskId: string }) =>
-      patchSubtaskCaches(client, requestId, (subtasks) => subtasks.filter((subtask) => subtask.id !== subtaskId)),
-    onError: (_error, _input, context) => restoreSubtaskCaches(client, context),
-    onSettled: (_data, _error, { requestId }) => invalidateRequestData(client, requestId),
-  });
-}
-
-export function useReorderSubtasks() {
-  const { request } = useAuth();
-  const client = useQueryClient();
-  return useMutation({
-    mutationFn: async ({ requestId, ids }: { requestId: string; ids: string[] }) => {
-      await request(`/items/${encodeURIComponent(requestId)}/subtasks/order`, {
-        method: "PUT",
-        body: JSON.stringify({ ids }),
-      });
-    },
-    onMutate: async ({ requestId, ids }: { requestId: string; ids: string[] }) =>
-      patchSubtaskCaches(client, requestId, (subtasks) => {
-        const byId = new Map(subtasks.map((subtask) => [subtask.id, subtask]));
-        return ids.map((id, position) => ({ ...byId.get(id)!, position }));
-      }),
-    onError: (_error, _input, context) => restoreSubtaskCaches(client, context),
-    onSettled: (_data, _error, { requestId }) => invalidateRequestData(client, requestId),
+    onSuccess: (_data, { requestId }) => invalidateRequestData(client, requestId),
   });
 }
 

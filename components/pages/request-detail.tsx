@@ -34,8 +34,8 @@ import {
   useUpdateRequest,
 } from "../../lib/queries";
 import { AdminChip, InternalChip, StatusDot, StatusPill, TypeChip } from "../badges";
+import { ChildCardList } from "../child-cards";
 import { useAuth, useLanguage } from "../providers";
-import { SubtaskList } from "../subtasks";
 import { Avatar, Button, SkeletonList } from "../ui/primitives";
 import { ConfirmDialog, Dialog, Menu, MenuItem, MenuSeparator } from "../ui/overlay";
 import { EmptyState, ErrorState } from "../ui/states";
@@ -152,6 +152,11 @@ export function RequestDetailPage({ requestId }: { requestId: string }) {
           <ArrowLeft size={14} aria-hidden="true" />
           {app?.name ?? t.backToBacklog}
         </Link>
+        {request.parent && (
+          <Link href={`/r/${encodeURIComponent(request.parent.id)}`} className="chip chip-neutral">
+            {t.subtaskOf} {request.parent.title}
+          </Link>
+        )}
       </nav>
 
       <header className="detail-header">
@@ -185,7 +190,7 @@ export function RequestDetailPage({ requestId }: { requestId: string }) {
                         {t.moveToApp}
                       </MenuItem>
                     )}
-                    {mayWorkflow && (
+                    {mayWorkflow && !request.parentId && (
                       <MenuItem
                         icon={
                           request.visibility === "internal" ? (
@@ -381,7 +386,7 @@ export function RequestDetailPage({ requestId }: { requestId: string }) {
       </section>
 
       {/* Subtasks */}
-      <SubtaskList requestId={request.id} subtasks={request.subtasks} canManage={maySubtasks} />
+      {!request.parentId && <ChildCardList request={request} canManage={maySubtasks} />}
 
       {/* Status — only administrators can change it, and everyone already sees the current
           state as a pill in the header, so this section is theirs alone. */}

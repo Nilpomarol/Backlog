@@ -9,7 +9,6 @@ import type {
   RequestSummary,
   Role,
   SimilarRequest,
-  Subtask,
   Visibility,
 } from "./domain";
 
@@ -94,6 +93,8 @@ export function toRequestSummary(row: Row): RequestSummary & { appName?: string;
     type: str(row.type) as ItemType,
     status: str(row.status) as ItemStatus,
     visibility: str(row.visibility) as Visibility,
+    parentId: nullableStr(row.parentId),
+    parentTitle: nullableStr(row.parentTitle),
     creatorId: str(row.creatorId),
     creatorName: str(row.creatorName),
     creatorAvatarUrl: nullableStr(row.creatorAvatarUrl),
@@ -108,21 +109,12 @@ export function toRequestSummary(row: Row): RequestSummary & { appName?: string;
   };
 }
 
-export function toSubtask(row: Row): Subtask {
+export function toRequestDetail(row: Row & { children?: Row[] }): RequestDetail {
+  const summary = toRequestSummary(row);
   return {
-    id: str(row.id),
-    title: str(row.title),
-    completed: bool(row.completed),
-    position: num(row.position),
-  };
-}
-
-export function toRequestDetail(row: Row & { subtasks?: Row[] }): RequestDetail {
-  return {
-    ...toRequestSummary(row),
-    subtaskCount: (row.subtasks ?? []).length,
-    completedSubtasks: (row.subtasks ?? []).filter((subtask) => bool(subtask.completed)).length,
-    subtasks: (row.subtasks ?? []).map(toSubtask),
+    ...summary,
+    children: (row.children ?? []).map(toRequestSummary),
+    parent: summary.parentId ? { id: summary.parentId, title: summary.parentTitle ?? "" } : null,
   };
 }
 
@@ -170,4 +162,4 @@ export function toSimilarRequest(row: Row): SimilarRequest {
   };
 }
 
-export type { Application, ManagedApplication, ManagedUser, Profile, RequestDetail, RequestSummary, Role, SimilarRequest, Subtask };
+export type { Application, ManagedApplication, ManagedUser, Profile, RequestDetail, RequestSummary, Role, SimilarRequest };

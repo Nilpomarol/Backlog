@@ -18,6 +18,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ALL_STATUSES,
   BOARD_STATUSES,
+  canChangeWorkflow,
   ITEM_PRIORITIES,
   ITEM_TYPES,
   isItemPriority,
@@ -26,6 +27,7 @@ import {
   type ItemStatus,
   type RequestSummary,
 } from "../../lib/domain";
+import { classes } from "../../lib/format";
 import { priorityLabels, statusLabels, typeLabels } from "../../lib/i18n";
 import { useAppItems, useApps, useErrorMessage, useSetStatus, useSetVisibility } from "../../lib/queries";
 import { StatusDot } from "../badges";
@@ -517,13 +519,31 @@ export function AppBacklogPage({ appId }: { appId: string }) {
   const { data: apps = [] } = useApps();
   const { data: items, isPending, isError, error, refetch } = useAppItems(appId);
   const describeError = useErrorMessage();
+  const setStatus = useSetStatus();
+  const { toast } = useToast();
 
   const [collapsed, setCollapsed] = useState<ItemStatus[]>([]);
   const [selected, setSelected] = useState<string[]>([]);
+  const [draggedId, setDraggedId] = useState<string | null>(null);
+  const [dragOverStatus, setDragOverStatus] = useState<ItemStatus | null>(null);
 
   const app = apps.find((entry) => entry.id === appId);
   const visible = useMemo(() => applyFilters(items ?? [], filters, profile?.id), [items, filters, profile?.id]);
   const columns = filters.discarded ? ALL_STATUSES : BOARD_STATUSES;
+  const canDrag = canChangeWorkflow(profile);
+
+  function dropOnColumn(status: ItemStatus) {
+    setDragOverStatus(null);
+    const id = draggedId;
+    setDraggedId(null);
+    if (!id) return;
+    const item = visible.find((entry) => entry.id === id);
+    if (!item || item.status === status) return;
+    setStatus.mutate(
+      { id, status },
+      { onError: (error) => toast(describeError(error), { tone: "error" }) },
+    );
+  }
 
   // Selection only means anything for rows currently on screen, so it is derived rather than
   // pruned in an effect — filtering a row out simply deselects it.
@@ -677,7 +697,39 @@ export function AppBacklogPage({ appId }: { appId: string }) {
                 const isCollapsed = collapsed.includes(status);
                 const headingId = `column-${status}`;
                 return (
-                  <section className={`board-column board-column-${status}`} key={status} aria-labelledby={headingId}>
+                  <section
+                    className={classes(
+                      `board-column board-column-${status}`,
+                      canDrag && dragOverStatus === status && "board-column-drop-target",
+                    )}
+                    key={status}
+                    aria-labelledby={headingId}
+                    onDragOver={
+                      canDrag
+                        ? (event) => {
+                            if (!draggedId) return;
+                            event.preventDefault();
+                            setDragOverStatus(status);
+                          }
+                        : undefined
+                    }
+                    onDragLeave={
+                      canDrag
+                        ? (event) => {
+                            if (event.currentTarget.contains(event.relatedTarget as Node)) return;
+                            setDragOverStatus((current) => (current === status ? null : current));
+                          }
+                        : undefined
+                    }
+                    onDrop={
+                      canDrag
+                        ? (event) => {
+                            event.preventDefault();
+                            dropOnColumn(status);
+                          }
+                        : undefined
+                    }
+                  >
                     <div className="column-header">
                       {/* The count sits outside the heading so the accessible name stays
                           "Pendents" rather than running together as "Pendents3". */}
@@ -708,7 +760,30 @@ export function AppBacklogPage({ appId }: { appId: string }) {
                         {cards.length === 0 ? (
                           <p className="column-empty">{t.columnEmpty}</p>
                         ) : (
-                          cards.map((item) => <RequestCard key={item.id} request={item} />)
+                          cards.map((item) => (
+                            <RequestCard
+                              key={item.id}
+                              request={item}
+                              draggable={canDrag}
+                              dragging={draggedId === item.id}
+                              onDragStart={
+                                canDrag
+                                  ? (event) => {
+                                      event.dataTransfer.effectAllowed = "move";
+                                      setDraggedId(item.id);
+                                    }
+                                  : undefined
+                              }
+                              onDragEnd={
+                                canDrag
+                                  ? () => {
+                                      setDraggedId(null);
+                                      setDragOverStatus(null);
+                                    }
+                                  : undefined
+                              }
+                            />
+                          ))
                         )}
                       </div>
                     )}

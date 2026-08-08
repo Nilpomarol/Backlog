@@ -8,7 +8,7 @@ import { canChangeWorkflow, canDeleteItem, canEditItem, canManageSubtasks, canRe
 import { checkRateLimit } from "../lib/rate-limit";
 
 type AppUser = { id: string; email: string; name: string; avatarUrl: string | null; role: "admin" | "user" };
-type ItemRecord = { id: string; appId: string; creatorId: string; visibility: Visibility; status: string };
+type ItemRecord = { id: string; appId: string; creatorId: string; visibility: Visibility; status: string; parentId: string | null };
 
 export type ApiEnvironment = DatabaseEnvironment & {
   FIREBASE_PROJECT_ID?: string;
@@ -34,11 +34,7 @@ const updateItemSchema = z.object({
   description: z.string().trim().max(4000).nullable().optional(),
   type: itemType.optional(),
 }).strict().refine((value) => Object.keys(value).length > 0, "No changes supplied.");
-const subtaskUpdateSchema = z.object({
-  title: z.string().trim().min(1).max(160).optional(),
-  completed: z.boolean().optional(),
-}).strict().refine((value) => Object.keys(value).length > 0, "No changes supplied.");
-const subtaskOrderSchema = z.object({ ids: z.array(z.string().min(1)).max(100) }).strict().refine((value) => new Set(value.ids).size === value.ids.length, "Subtask identifiers must be unique.");
+const createChildSchema = z.object({ title: z.string().trim().min(1).max(160) }).strict();
 const avatarUrl = z.string().trim().url().max(1000).refine((value) => value.startsWith("https://"), "Profile images must use HTTPS.").nullable();
 const appFields = {
   name: z.string().trim().min(2).max(80),
@@ -344,16 +340,18 @@ api.get("/apps/:appId/items", async (context) => {
   if (!(await canAccessApp(client, currentUser, context.req.param("appId")))) return context.json({ error: { code: "not_found", message: "Application not found." } }, 404);
   const result = await client.execute({
     sql: `SELECT b.id, b.app_id AS appId, b.creator_id AS creatorId, b.title, b.description,
-            b.type, b.status, b.visibility, b.created_at AS createdAt, b.updated_at AS updatedAt,
+            b.type, b.status, b.visibility, b.parent_id AS parentId, p.title AS parentTitle,
+            b.created_at AS createdAt, b.updated_at AS updatedAt,
             u.name AS creatorName, u.avatar_url AS creatorAvatarUrl, u.role AS creatorRole,
             COUNT(DISTINCT v.user_id) AS votes,
             MAX(CASE WHEN v.user_id = ? THEN 1 ELSE 0 END) AS voted,
-            COUNT(DISTINCT s.id) AS subtaskCount,
-            COUNT(DISTINCT CASE WHEN s.completed = 1 THEN s.id END) AS completedSubtasks
+            COUNT(DISTINCT c.id) AS subtaskCount,
+            COUNT(DISTINCT CASE WHEN c.status = 'done' THEN c.id END) AS completedSubtasks
           FROM backlog_items b
           JOIN users u ON u.id = b.creator_id
+          LEFT JOIN backlog_items p ON p.id = b.parent_id
           LEFT JOIN votes v ON v.item_id = b.id
-          LEFT JOIN subtasks s ON s.item_id = b.id
+          LEFT JOIN backlog_items c ON c.parent_id = b.id
           WHERE b.app_id = ? AND (b.visibility = 'shared' OR ? = 'admin')
           GROUP BY b.id ORDER BY b.updated_at DESC`,
     args: [currentUser.id, context.req.param("appId"), currentUser.role],
@@ -392,18 +390,20 @@ api.get("/items", async (context) => {
   const client = getClient(context.env);
   const result = await client.execute({
     sql: `SELECT b.id, b.app_id AS appId, b.creator_id AS creatorId, b.title, b.description,
-            b.type, b.status, b.visibility, b.created_at AS createdAt, b.updated_at AS updatedAt,
+            b.type, b.status, b.visibility, b.parent_id AS parentId, p.title AS parentTitle,
+            b.created_at AS createdAt, b.updated_at AS updatedAt,
             a.name AS appName, a.logo_url AS appLogoUrl,
             u.name AS creatorName, u.avatar_url AS creatorAvatarUrl, u.role AS creatorRole,
             COUNT(DISTINCT v.user_id) AS votes,
             MAX(CASE WHEN v.user_id = ? THEN 1 ELSE 0 END) AS voted,
-            COUNT(DISTINCT s.id) AS subtaskCount,
-            COUNT(DISTINCT CASE WHEN s.completed = 1 THEN s.id END) AS completedSubtasks
+            COUNT(DISTINCT c.id) AS subtaskCount,
+            COUNT(DISTINCT CASE WHEN c.status = 'done' THEN c.id END) AS completedSubtasks
           FROM backlog_items b
           JOIN apps a ON a.id = b.app_id AND a.is_active = 1
           JOIN users u ON u.id = b.creator_id
+          LEFT JOIN backlog_items p ON p.id = b.parent_id
           LEFT JOIN votes v ON v.item_id = b.id
-          LEFT JOIN subtasks s ON s.item_id = b.id
+          LEFT JOIN backlog_items c ON c.parent_id = b.id
           WHERE (b.visibility = 'shared' OR ? = 'admin')
             ${currentUser.role === "admin" ? "" : "AND EXISTS (SELECT 1 FROM app_access aa WHERE aa.app_id = b.app_id AND aa.user_id = ?)"}
             ${statuses.length ? `AND b.status IN (${statuses.map(() => "?").join(", ")})` : ""}
@@ -420,17 +420,24 @@ api.get("/items/:id", async (context) => {
   if (!item || !canReadItem(currentUser, item, await canAccessApp(client, currentUser, item.appId))) return context.json({ error: { code: "not_found", message: "Request not found." } }, 404);
   const detail = await client.execute({
     sql: `SELECT b.id, b.app_id AS appId, b.creator_id AS creatorId, b.title, b.description, b.type, b.status, b.visibility,
+            b.parent_id AS parentId, p.title AS parentTitle,
             b.created_at AS createdAt, b.updated_at AS updatedAt, u.name AS creatorName, u.avatar_url AS creatorAvatarUrl, u.role AS creatorRole,
             COUNT(v.user_id) AS votes, MAX(CASE WHEN v.user_id = ? THEN 1 ELSE 0 END) AS voted
-          FROM backlog_items b JOIN users u ON u.id = b.creator_id LEFT JOIN votes v ON v.item_id = b.id
+          FROM backlog_items b JOIN users u ON u.id = b.creator_id LEFT JOIN backlog_items p ON p.id = b.parent_id LEFT JOIN votes v ON v.item_id = b.id
           WHERE b.id = ? GROUP BY b.id`,
     args: [currentUser.id, item.id],
   });
-  const subtasks = await client.execute({
-    sql: "SELECT id, title, completed, position FROM subtasks WHERE item_id = ? ORDER BY position, created_at",
-    args: [item.id],
+  const children = await client.execute({
+    sql: `SELECT c.id, c.app_id AS appId, c.creator_id AS creatorId, c.title, c.description, c.type, c.status, c.visibility,
+            c.parent_id AS parentId, c.created_at AS createdAt, c.updated_at AS updatedAt,
+            u.name AS creatorName, u.avatar_url AS creatorAvatarUrl, u.role AS creatorRole,
+            COUNT(DISTINCT v.user_id) AS votes, MAX(CASE WHEN v.user_id = ? THEN 1 ELSE 0 END) AS voted,
+            0 AS subtaskCount, 0 AS completedSubtasks
+          FROM backlog_items c JOIN users u ON u.id = c.creator_id LEFT JOIN votes v ON v.item_id = c.id
+          WHERE c.parent_id = ? GROUP BY c.id ORDER BY c.created_at`,
+    args: [currentUser.id, item.id],
   });
-  return context.json({ data: { ...detail.rows[0], subtasks: subtasks.rows } });
+  return context.json({ data: { ...detail.rows[0], children: children.rows } });
 });
 
 api.post("/items", async (context) => {
@@ -491,6 +498,7 @@ api.patch("/items/:id/visibility", async (context) => {
   const client = getClient(context.env);
   const item = await findItem(client, context.req.param("id"));
   if (!item) return context.json({ error: { code: "not_found", message: "Request not found." } }, 404);
+  if (item.parentId) return context.json({ error: { code: "invalid_request", message: "Subtask cards are always internal." } }, 400);
   await client.execute({ sql: "UPDATE backlog_items SET visibility = ?, updated_at = ? WHERE id = ?", args: [parsed.data.visibility, Date.now(), item.id] });
   return context.json({ data: { id: item.id, visibility: parsed.data.visibility } });
 });
@@ -522,79 +530,37 @@ api.delete("/items/:id/vote", async (context) => {
   return context.body(null, 204);
 });
 
-api.post("/items/:id/subtasks", async (context) => {
-  const parsed = z.object({ title: z.string().trim().min(1).max(160) }).strict().safeParse(await context.req.json().catch(() => null));
+api.post("/items/:id/children", async (context) => {
+  const parsed = createChildSchema.safeParse(await context.req.json().catch(() => null));
   if (!parsed.success) return context.json({ error: { code: "invalid_request", message: parsed.error.issues[0]?.message } }, 400);
   const currentUser = context.get("user");
   const client = getClient(context.env);
   const item = await findItem(client, context.req.param("id"));
   if (!item || !canReadItem(currentUser, item, await canAccessApp(client, currentUser, item.appId))) return context.json({ error: { code: "not_found", message: "Request not found." } }, 404);
   if (!canManageSubtasks(currentUser, item)) return context.json({ error: { code: "forbidden", message: "You cannot manage subtasks for this request." } }, 403);
-  const positionResult = await client.execute({ sql: "SELECT COALESCE(MAX(position), -1) + 1 AS position FROM subtasks WHERE item_id = ?", args: [item.id] });
+  if (item.parentId) return context.json({ error: { code: "invalid_request", message: "A subtask card cannot have its own subtasks." } }, 400);
   const id = crypto.randomUUID();
   const now = Date.now();
-  await client.execute({ sql: "INSERT INTO subtasks (id, item_id, title, completed, position, created_at, updated_at) VALUES (?, ?, ?, 0, ?, ?, ?)", args: [id, item.id, parsed.data.title, Number(positionResult.rows[0]?.position ?? 0), now, now] });
+  await client.execute({
+    sql: `INSERT INTO backlog_items (id, app_id, creator_id, title, description, type, status, visibility, parent_id, created_at, updated_at)
+          VALUES (?, ?, ?, ?, NULL, 'task', 'backlog', 'internal', ?, ?, ?)`,
+    args: [id, item.appId, currentUser.id, parsed.data.title, item.id, now, now],
+  });
   return context.json({ data: { id } }, 201);
 });
 
-api.patch("/subtasks/:id", async (context) => {
-  const parsed = subtaskUpdateSchema.safeParse(await context.req.json().catch(() => null));
-  if (!parsed.success) return context.json({ error: { code: "invalid_request", message: parsed.error.issues[0]?.message } }, 400);
-  const currentUser = context.get("user");
-  const client = getClient(context.env);
-  const record = await findSubtask(client, context.req.param("id"));
-  if (!record || !canReadItem(currentUser, record.item, await canAccessApp(client, currentUser, record.item.appId))) return context.json({ error: { code: "not_found", message: "Subtask not found." } }, 404);
-  if (!canManageSubtasks(currentUser, record.item)) return context.json({ error: { code: "forbidden", message: "You cannot manage this subtask." } }, 403);
-  const updates: [string, string | number][] = [];
-  if (parsed.data.title !== undefined) updates.push(["title", parsed.data.title]);
-  if (parsed.data.completed !== undefined) updates.push(["completed", parsed.data.completed ? 1 : 0]);
-  updates.push(["updated_at", Date.now()]);
-  await client.execute({ sql: `UPDATE subtasks SET ${updates.map(([name]) => `${name} = ?`).join(", ")} WHERE id = ?`, args: [...updates.map(([, value]) => value), record.id] });
-  return context.json({ data: { id: record.id } });
-});
-
-api.delete("/subtasks/:id", async (context) => {
-  const currentUser = context.get("user");
-  const client = getClient(context.env);
-  const record = await findSubtask(client, context.req.param("id"));
-  if (!record || !canReadItem(currentUser, record.item, await canAccessApp(client, currentUser, record.item.appId))) return context.json({ error: { code: "not_found", message: "Subtask not found." } }, 404);
-  if (!canManageSubtasks(currentUser, record.item)) return context.json({ error: { code: "forbidden", message: "You cannot manage this subtask." } }, 403);
-  await client.execute({ sql: "DELETE FROM subtasks WHERE id = ?", args: [record.id] });
-  return context.body(null, 204);
-});
-
-api.put("/items/:id/subtasks/order", async (context) => {
-  const parsed = subtaskOrderSchema.safeParse(await context.req.json().catch(() => null));
-  if (!parsed.success) return context.json({ error: { code: "invalid_request", message: parsed.error.issues[0]?.message } }, 400);
-  const currentUser = context.get("user");
-  const client = getClient(context.env);
-  const item = await findItem(client, context.req.param("id"));
-  if (!item || !canReadItem(currentUser, item, await canAccessApp(client, currentUser, item.appId))) return context.json({ error: { code: "not_found", message: "Request not found." } }, 404);
-  if (!canManageSubtasks(currentUser, item)) return context.json({ error: { code: "forbidden", message: "You cannot reorder these subtasks." } }, 403);
-  const existing = await client.execute({ sql: "SELECT id FROM subtasks WHERE item_id = ? ORDER BY position", args: [item.id] });
-  const existingIds = existing.rows.map((row) => String(row.id)).sort();
-  if (existingIds.join("\0") !== [...parsed.data.ids].sort().join("\0")) return context.json({ error: { code: "invalid_request", message: "The order must contain every subtask exactly once." } }, 400);
-  const now = Date.now();
-  await client.batch(parsed.data.ids.map((id, position) => ({ sql: "UPDATE subtasks SET position = ?, updated_at = ? WHERE id = ? AND item_id = ?", args: [position, now, id, item.id] })), "write");
-  return context.json({ data: { ids: parsed.data.ids } });
-});
-
 async function findItem(client: ReturnType<typeof getClient>, id: string): Promise<ItemRecord | null> {
-  const result = await client.execute({ sql: "SELECT id, app_id, creator_id, visibility, status FROM backlog_items WHERE id = ?", args: [id] });
+  const result = await client.execute({ sql: "SELECT id, app_id, creator_id, visibility, status, parent_id FROM backlog_items WHERE id = ?", args: [id] });
   const row = result.rows[0];
   if (!row) return null;
-  return { id: String(row.id), appId: String(row.app_id), creatorId: String(row.creator_id), visibility: String(row.visibility) as Visibility, status: String(row.status) };
-}
-
-async function findSubtask(client: ReturnType<typeof getClient>, id: string) {
-  const result = await client.execute({
-    sql: `SELECT s.id, b.id AS item_id, b.app_id, b.creator_id, b.visibility, b.status
-          FROM subtasks s JOIN backlog_items b ON b.id = s.item_id WHERE s.id = ?`,
-    args: [id],
-  });
-  const row = result.rows[0];
-  if (!row) return null;
-  return { id: String(row.id), item: { id: String(row.item_id), appId: String(row.app_id), creatorId: String(row.creator_id), visibility: String(row.visibility) as Visibility, status: String(row.status) } satisfies ItemRecord };
+  return {
+    id: String(row.id),
+    appId: String(row.app_id),
+    creatorId: String(row.creator_id),
+    visibility: String(row.visibility) as Visibility,
+    status: String(row.status),
+    parentId: row.parent_id === null ? null : String(row.parent_id),
+  };
 }
 
 /**

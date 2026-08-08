@@ -1,5 +1,6 @@
 "use client";
 
+import { CornerDownRight } from "lucide-react";
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { classes, formatRelative } from "../lib/format";
@@ -8,6 +9,17 @@ import { AdminChip, InternalChip, StatusPill, TypeChip } from "./badges";
 import { useAuth, useLanguage } from "./providers";
 import { AppIcon, Avatar, SubtaskProgress } from "./ui/primitives";
 import { VoteButton } from "./vote-button";
+
+function ParentLinkChip({ request }: { request: RequestSummary }) {
+  const { t } = useLanguage();
+  if (!request.parentId) return null;
+  return (
+    <Link href={`/r/${encodeURIComponent(request.parentId)}`} className="chip chip-neutral">
+      <CornerDownRight size={11} aria-hidden="true" />
+      {t.subtaskOf} {request.parentTitle}
+    </Link>
+  );
+}
 
 function useAuthorLabel() {
   const { t } = useLanguage();
@@ -26,6 +38,7 @@ export function RequestCard({ request }: { request: RequestSummary }) {
         <TypeChip type={request.type} />
         {request.visibility === "internal" && <InternalChip />}
         {request.creatorRole === "admin" && <AdminChip />}
+        <ParentLinkChip request={request} />
       </div>
 
       <h3 className="request-card-title">
@@ -97,6 +110,7 @@ export function RequestRow({
           {showStatus && <StatusPill status={request.status} />}
           {request.visibility === "internal" && <InternalChip />}
           {request.creatorRole === "admin" && <AdminChip />}
+          <ParentLinkChip request={request} />
         </div>
 
         <h3 className={classes("request-row-title", request.status === "discarded" && "subtask-done")}>

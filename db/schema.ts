@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { check, index, integer, primaryKey, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
+import { check, index, integer, primaryKey, sqliteTable, text, uniqueIndex, type AnySQLiteColumn } from "drizzle-orm/sqlite-core";
 
 const timestamp = (name: string) => integer(name).notNull().default(sql`(unixepoch() * 1000)`);
 
@@ -44,6 +44,9 @@ export const backlogItems = sqliteTable("backlog_items", {
   id: text("id").primaryKey(),
   appId: text("app_id").notNull().references(() => apps.id, { onDelete: "cascade" }),
   creatorId: text("creator_id").notNull().references(() => users.id, { onDelete: "restrict" }),
+  // A subtask card is an ordinary backlog_items row with parentId set. It always carries
+  // visibility 'internal' (enforced in the API, not the schema) and cannot itself have children.
+  parentId: text("parent_id").references((): AnySQLiteColumn => backlogItems.id, { onDelete: "cascade" }),
   title: text("title").notNull(),
   description: text("description"),
   type: text("type", { enum: ["bug", "feature", "improvement", "task"] }).notNull(),
@@ -55,6 +58,7 @@ export const backlogItems = sqliteTable("backlog_items", {
   index("idx_backlog_items_app_status").on(table.appId, table.status),
   index("idx_backlog_items_app_visibility").on(table.appId, table.visibility),
   index("idx_backlog_items_creator").on(table.creatorId),
+  index("idx_backlog_items_parent").on(table.parentId),
   check("backlog_items_type_check", sql`${table.type} in ('bug', 'feature', 'improvement', 'task')`),
   check("backlog_items_status_check", sql`${table.status} in ('backlog', 'in_progress', 'in_review', 'done', 'discarded')`),
   check("backlog_items_visibility_check", sql`${table.visibility} in ('shared', 'internal')`),
@@ -67,16 +71,4 @@ export const votes = sqliteTable("votes", {
 }, (table) => [
   primaryKey({ columns: [table.itemId, table.userId] }),
   index("idx_votes_user").on(table.userId),
-]);
-
-export const subtasks = sqliteTable("subtasks", {
-  id: text("id").primaryKey(),
-  itemId: text("item_id").notNull().references(() => backlogItems.id, { onDelete: "cascade" }),
-  title: text("title").notNull(),
-  completed: integer("completed", { mode: "boolean" }).notNull().default(false),
-  position: integer("position").notNull(),
-  createdAt: timestamp("created_at"),
-  updatedAt: timestamp("updated_at"),
-}, (table) => [
-  index("idx_subtasks_item_position").on(table.itemId, table.position),
 ]);

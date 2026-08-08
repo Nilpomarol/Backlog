@@ -19,6 +19,7 @@
     "lint": "eslint . --ignore-pattern dist --ignore-pattern .next --ignore-pattern .wrangler",
     "db:generate": "drizzle-kit generate",
     "db:setup": "node scripts/setup-db.mjs",
+    "db:seed": "node scripts/seed-demo.mjs",
     "db:studio": "drizzle-kit studio",
     "user:invite": "node scripts/invite-user.mjs",
     "user:list": "node scripts/list-users.mjs"

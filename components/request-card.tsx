@@ -2,7 +2,7 @@
 
 import { CornerDownRight, ListChecks } from "lucide-react";
 import Link from "next/link";
-import type { ReactNode } from "react";
+import type { DragEvent, ReactNode } from "react";
 import { classes, formatRelative } from "../lib/format";
 import type { RequestSummary } from "../lib/domain";
 import { InternalChip, PriorityChip, StatusPill, TypeChip } from "./badges";
@@ -36,7 +36,7 @@ function SubtaskOfLink({ request }: { request: RequestSummary }) {
   const { t } = useLanguage();
   if (!request.parentId) return null;
   return (
-    <Link href={`/r/${encodeURIComponent(request.parentId)}`} className="subtask-of-link card-overlay">
+    <Link href={`/r/${encodeURIComponent(request.parentId)}`} className="subtask-of-link card-overlay" draggable={false}>
       <CornerDownRight size={11} aria-hidden="true" />
       <span>
         {t.subtaskOf} {request.parentTitle}
@@ -56,15 +56,36 @@ function useAuthorLabel() {
  * corner rather than labelled chips competing with it for the first read. Everything else (who
  * created it, whether it's a subtask) is plain text below.
  */
-export function RequestCard({ request }: { request: RequestSummary }) {
+export function RequestCard({
+  request,
+  draggable,
+  dragging,
+  onDragStart,
+  onDragEnd,
+}: {
+  request: RequestSummary;
+  draggable?: boolean;
+  dragging?: boolean;
+  onDragStart?: (event: DragEvent<HTMLElement>) => void;
+  onDragEnd?: (event: DragEvent<HTMLElement>) => void;
+}) {
   const { t, language } = useLanguage();
   const authorLabel = useAuthorLabel();
 
   return (
-    <article className={classes("request-card", request.status === "discarded" && "request-card-discarded")}>
+    <article
+      className={classes(
+        "request-card",
+        request.status === "discarded" && "request-card-discarded",
+        dragging && "request-card-dragging",
+      )}
+      draggable={draggable}
+      onDragStart={onDragStart}
+      onDragEnd={onDragEnd}
+    >
       <div className="request-card-top">
         <h3 className="request-card-title">
-          <Link href={`/r/${encodeURIComponent(request.id)}`} className="card-link">
+          <Link href={`/r/${encodeURIComponent(request.id)}`} className="card-link" draggable={false}>
             {request.title}
           </Link>
         </h3>

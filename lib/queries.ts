@@ -24,6 +24,7 @@ import type {
   RequestSummary,
   Role,
   SimilarRequest,
+  Subtask,
   Visibility,
 } from "./domain";
 
@@ -269,6 +270,34 @@ export function useToggleSubtask() {
   });
 }
 
+/** Snapshots every cached list and the detail view for a request, so a failed optimistic
+ *  write can be rolled back to exactly what was on screen before it. */
+async function snapshotRequestCaches(client: QueryClient, id: string) {
+  await client.cancelQueries({ queryKey: ["items"] });
+  await client.cancelQueries({ queryKey: queryKeys.request(id) });
+  return {
+    previousLists: client.getQueriesData<RequestSummary[]>({ queryKey: ["items"] }),
+    previousDetail: client.getQueryData<RequestDetail>(queryKeys.request(id)),
+  };
+}
+
+function restoreRequestCaches(
+  client: QueryClient,
+  id: string,
+  context: { previousLists: [readonly unknown[], RequestSummary[] | undefined][]; previousDetail?: RequestDetail } | undefined,
+) {
+  context?.previousLists.forEach(([key, value]) => client.setQueryData(key, value));
+  if (context?.previousDetail) client.setQueryData(queryKeys.request(id), context.previousDetail);
+}
+
+/** Applies `patch` to a request wherever it's cached: every matching list and the detail view. */
+function patchRequestCaches(client: QueryClient, id: string, patch: (item: RequestSummary) => RequestSummary) {
+  client.setQueriesData<RequestSummary[]>({ queryKey: ["items"] }, (list) =>
+    list?.map((item) => (item.id === id ? patch(item) : item)),
+  );
+  client.setQueryData<RequestDetail>(queryKeys.request(id), (detail) => (detail ? { ...detail, ...patch(detail) } : detail));
+}
+
 // --- Request writes -----------------------------------------------------------------------
 
 export function useCreateRequest() {
@@ -295,20 +324,24 @@ export function useCreateRequest() {
 export function useUpdateRequest() {
   const { request } = useAuth();
   const client = useQueryClient();
+  type Input = {
+    id: string;
+    appId?: string;
+    title?: string;
+    description?: string | null;
+    type?: ItemType;
+  };
   return useMutation({
-    mutationFn: async ({
-      id,
-      ...changes
-    }: {
-      id: string;
-      appId?: string;
-      title?: string;
-      description?: string | null;
-      type?: ItemType;
-    }) => {
+    mutationFn: async ({ id, ...changes }: Input) => {
       await request(`/items/${encodeURIComponent(id)}`, { method: "PATCH", body: JSON.stringify(changes) });
     },
-    onSuccess: (_data, { id }) => invalidateRequestData(client, id),
+    onMutate: async ({ id, ...changes }: Input) => {
+      const snapshot = await snapshotRequestCaches(client, id);
+      patchRequestCaches(client, id, (item) => ({ ...item, ...changes }));
+      return { ...snapshot, id };
+    },
+    onError: (_error, _input, context) => restoreRequestCaches(client, context?.id ?? "", context),
+    onSettled: (_data, _error, { id }) => invalidateRequestData(client, id),
   });
 }
 
@@ -322,7 +355,13 @@ export function useSetStatus() {
         body: JSON.stringify({ status }),
       });
     },
-    onSuccess: (_data, { id }) => invalidateRequestData(client, id),
+    onMutate: async ({ id, status }: { id: string; status: ItemStatus }) => {
+      const snapshot = await snapshotRequestCaches(client, id);
+      patchRequestCaches(client, id, (item) => ({ ...item, status }));
+      return { ...snapshot, id };
+    },
+    onError: (_error, _input, context) => restoreRequestCaches(client, context?.id ?? "", context),
+    onSettled: (_data, _error, { id }) => invalidateRequestData(client, id),
   });
 }
 
@@ -336,7 +375,13 @@ export function useSetVisibility() {
         body: JSON.stringify({ visibility }),
       });
     },
-    onSuccess: (_data, { id }) => invalidateRequestData(client, id),
+    onMutate: async ({ id, visibility }: { id: string; visibility: Visibility }) => {
+      const snapshot = await snapshotRequestCaches(client, id);
+      patchRequestCaches(client, id, (item) => ({ ...item, visibility }));
+      return { ...snapshot, id };
+    },
+    onError: (_error, _input, context) => restoreRequestCaches(client, context?.id ?? "", context),
+    onSettled: (_data, _error, { id }) => invalidateRequestData(client, id),
   });
 }
 
@@ -347,6 +392,12 @@ export function useDeleteRequest() {
     mutationFn: async (id: string) => {
       await request(`/items/${encodeURIComponent(id)}`, { method: "DELETE" });
     },
+    onMutate: async (id: string) => {
+      const snapshot = await snapshotRequestCaches(client, id);
+      client.setQueriesData<RequestSummary[]>({ queryKey: ["items"] }, (list) => list?.filter((item) => item.id !== id));
+      return { ...snapshot, id };
+    },
+    onError: (_error, _id, context) => restoreRequestCaches(client, context?.id ?? "", context),
     onSuccess: (_data, id) => {
       client.removeQueries({ queryKey: queryKeys.request(id) });
       invalidateRequestData(client);
@@ -355,6 +406,41 @@ export function useDeleteRequest() {
 }
 
 // --- Subtask writes -----------------------------------------------------------------------
+
+/** Rewrites a request's subtask list (detail view + the summary counts mirrored in every list
+ *  cache) and snapshots the prior state so a failed write can be rolled back. */
+async function patchSubtaskCaches(client: QueryClient, requestId: string, updater: (subtasks: Subtask[]) => Subtask[]) {
+  await client.cancelQueries({ queryKey: queryKeys.request(requestId) });
+  const previous = client.getQueryData<RequestDetail>(queryKeys.request(requestId));
+
+  client.setQueryData<RequestDetail>(queryKeys.request(requestId), (detail) => {
+    if (!detail) return detail;
+    const subtasks = updater(detail.subtasks);
+    return { ...detail, subtasks, completedSubtasks: subtasks.filter((item) => item.completed).length };
+  });
+  const nextSubtasks = updater(previous?.subtasks ?? []);
+  client.setQueriesData<RequestSummary[]>({ queryKey: ["items"] }, (list) =>
+    list?.map((item) =>
+      item.id === requestId
+        ? { ...item, subtaskCount: nextSubtasks.length, completedSubtasks: nextSubtasks.filter((s) => s.completed).length }
+        : item,
+    ),
+  );
+
+  return { previous, requestId };
+}
+
+function restoreSubtaskCaches(client: QueryClient, context: { previous?: RequestDetail; requestId: string } | undefined) {
+  if (!context) return;
+  if (context.previous) client.setQueryData(queryKeys.request(context.requestId), context.previous);
+  client.setQueriesData<RequestSummary[]>({ queryKey: ["items"] }, (list) =>
+    list?.map((item) =>
+      item.id === context.requestId && context.previous
+        ? { ...item, subtaskCount: context.previous.subtasks.length, completedSubtasks: context.previous.completedSubtasks }
+        : item,
+    ),
+  );
+}
 
 export function useAddSubtask() {
   const { request } = useAuth();
@@ -366,7 +452,15 @@ export function useAddSubtask() {
         body: JSON.stringify({ title }),
       });
     },
-    onSuccess: (_data, { requestId }) => invalidateRequestData(client, requestId),
+    onMutate: async ({ requestId, title }: { requestId: string; title: string }) => {
+      const tempId = `temp-${crypto.randomUUID()}`;
+      return patchSubtaskCaches(client, requestId, (subtasks) => [
+        ...subtasks,
+        { id: tempId, title, completed: false, position: subtasks.length },
+      ]);
+    },
+    onError: (_error, _input, context) => restoreSubtaskCaches(client, context),
+    onSettled: (_data, _error, { requestId }) => invalidateRequestData(client, requestId),
   });
 }
 
@@ -380,7 +474,12 @@ export function useRenameSubtask() {
         body: JSON.stringify({ title }),
       });
     },
-    onSuccess: (_data, { requestId }) => invalidateRequestData(client, requestId),
+    onMutate: async ({ requestId, subtaskId, title }: { requestId: string; subtaskId: string; title: string }) =>
+      patchSubtaskCaches(client, requestId, (subtasks) =>
+        subtasks.map((subtask) => (subtask.id === subtaskId ? { ...subtask, title } : subtask)),
+      ),
+    onError: (_error, _input, context) => restoreSubtaskCaches(client, context),
+    onSettled: (_data, _error, { requestId }) => invalidateRequestData(client, requestId),
   });
 }
 
@@ -391,7 +490,10 @@ export function useDeleteSubtask() {
     mutationFn: async ({ subtaskId }: { requestId: string; subtaskId: string }) => {
       await request(`/subtasks/${encodeURIComponent(subtaskId)}`, { method: "DELETE" });
     },
-    onSuccess: (_data, { requestId }) => invalidateRequestData(client, requestId),
+    onMutate: async ({ requestId, subtaskId }: { requestId: string; subtaskId: string }) =>
+      patchSubtaskCaches(client, requestId, (subtasks) => subtasks.filter((subtask) => subtask.id !== subtaskId)),
+    onError: (_error, _input, context) => restoreSubtaskCaches(client, context),
+    onSettled: (_data, _error, { requestId }) => invalidateRequestData(client, requestId),
   });
 }
 
@@ -405,7 +507,13 @@ export function useReorderSubtasks() {
         body: JSON.stringify({ ids }),
       });
     },
-    onSuccess: (_data, { requestId }) => invalidateRequestData(client, requestId),
+    onMutate: async ({ requestId, ids }: { requestId: string; ids: string[] }) =>
+      patchSubtaskCaches(client, requestId, (subtasks) => {
+        const byId = new Map(subtasks.map((subtask) => [subtask.id, subtask]));
+        return ids.map((id, position) => ({ ...byId.get(id)!, position }));
+      }),
+    onError: (_error, _input, context) => restoreSubtaskCaches(client, context),
+    onSettled: (_data, _error, { requestId }) => invalidateRequestData(client, requestId),
   });
 }
 

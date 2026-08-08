@@ -4,6 +4,7 @@ import { ArrowLeft, Lightbulb } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { useBackHref } from "../../lib/board-return";
 import { ITEM_TYPES, type ItemType, type Visibility } from "../../lib/domain";
 import { typeLabels } from "../../lib/i18n";
 import {
@@ -33,6 +34,10 @@ export function NewRequestPage({ appId }: { appId: string }) {
 
   const { data: apps = [] } = useApps();
   const createRequest = useCreateRequest();
+
+  // Returns to wherever the user actually came from instead of resetting to the bare board —
+  // see lib/board-return.ts.
+  const boardHref = useBackHref(appId);
 
   const [targetAppId, setTargetAppId] = useState(appId);
   const [title, setTitle] = useState("");
@@ -90,7 +95,7 @@ export function NewRequestPage({ appId }: { appId: string }) {
   return (
     <div className="page page-prose">
       <nav className="breadcrumb" aria-label={t.backTo}>
-        <Link href={`/a/${encodeURIComponent(appId)}`} className="btn btn-ghost btn-sm">
+        <Link href={boardHref} className="btn btn-ghost btn-sm">
           <ArrowLeft size={14} aria-hidden="true" />
           {app?.name ?? t.backToBacklog}
         </Link>

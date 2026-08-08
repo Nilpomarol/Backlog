@@ -22,6 +22,7 @@ import {
   voteBlockedReason,
   type ItemStatus,
 } from "../../lib/domain";
+import { useBackHref } from "../../lib/board-return";
 import { formatDateTime, formatRelative } from "../../lib/format";
 import { statusLabelsSingular } from "../../lib/i18n";
 import {
@@ -64,6 +65,10 @@ export function RequestDetailPage({ requestId }: { requestId: string }) {
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [moveOpen, setMoveOpen] = useState(false);
   const [moveTarget, setMoveTarget] = useState("");
+
+  // Returns to wherever the user actually came from (filtered board, parent task, subtask...)
+  // instead of resetting to the bare board — see lib/board-return.ts.
+  const boardHref = useBackHref(request?.appId ?? "");
 
   const onError = (failure: unknown) => toast(describeError(failure), { tone: "error" });
 
@@ -148,7 +153,7 @@ export function RequestDetailPage({ requestId }: { requestId: string }) {
   return (
     <div className="page page-prose">
       <nav className="breadcrumb" aria-label={t.backTo}>
-        <Link href={`/a/${encodeURIComponent(request.appId)}`} className="btn btn-ghost btn-sm">
+        <Link href={boardHref} className="btn btn-ghost btn-sm">
           <ArrowLeft size={14} aria-hidden="true" />
           {app?.name ?? t.backToBacklog}
         </Link>

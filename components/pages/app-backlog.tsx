@@ -5,16 +5,16 @@ import {
   ChevronDown,
   Columns3,
   Inbox as InboxIcon,
-  ListFilter,
   Plus,
   Rows3,
   Search,
   SearchX,
+  SlidersHorizontal,
   X,
 } from "lucide-react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ALL_STATUSES,
   BOARD_STATUSES,
@@ -30,7 +30,7 @@ import { StatusDot } from "../badges";
 import { useAuth, useLanguage } from "../providers";
 import { RequestCard, RequestRow } from "../request-card";
 import { AppIcon, Button, IconButton, SkeletonCard, SkeletonList } from "../ui/primitives";
-import { Menu, MenuItem, MenuLabel } from "../ui/overlay";
+import { Menu, MenuLabel, Sheet } from "../ui/overlay";
 import { EmptyState, ErrorState } from "../ui/states";
 import { useToast } from "../ui/toast";
 
@@ -97,7 +97,7 @@ function FilterBar({
   resultCount: number;
 }) {
   const { t, language } = useLanguage();
-  const [expanded, setExpanded] = useState(false);
+  const [sheetOpen, setSheetOpen] = useState(false);
   const [draft, setDraft] = useState(filters.q);
   const [syncedQuery, setSyncedQuery] = useState(filters.q);
 
@@ -109,11 +109,29 @@ function FilterBar({
   }
 
   // Debounce so typing doesn't push a history entry per keystroke.
+  const debouncedUpdateRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
     if (draft === filters.q) return;
-    const timer = setTimeout(() => filters.update({ q: draft || null }), 250);
+    const timer = setTimeout(() => {
+      debouncedUpdateRef.current = null;
+      filters.update({ q: draft || null });
+    }, 250);
+    debouncedUpdateRef.current = timer;
     return () => clearTimeout(timer);
   }, [draft, filters]);
+
+  // The URL only catches up with a back/forward navigation once its (async) transition commits,
+  // which can take longer than the debounce above — without this, a pending edit can fire after
+  // the user has already navigated away from it and silently reapply the search they just left.
+  useEffect(() => {
+    function onPopState() {
+      if (debouncedUpdateRef.current === null) return;
+      clearTimeout(debouncedUpdateRef.current);
+      debouncedUpdateRef.current = null;
+    }
+    window.addEventListener("popstate", onPopState);
+    return () => window.removeEventListener("popstate", onPopState);
+  }, []);
 
   const activeCount =
     filters.types.length +
@@ -121,10 +139,46 @@ function FilterBar({
     (filters.author !== "all" ? 1 : 0) +
     (filters.vis !== "all" ? 1 : 0) +
     (filters.q ? 1 : 0);
+  const sortLabels = { updated: t.sortUpdated, votes: t.sortVotes, newest: t.sortNewest, oldest: t.sortOldest };
+  const authorOptions: [Author, string][] = [
+    ["all", t.authorAll],
+    ["mine", t.authorMine],
+    ["others", t.authorOthers],
+  ];
+  const visOptions: [Vis, string][] = [
+    ["all", t.visibilityAll],
+    ["shared", t.shared],
+    ["internal", t.internal],
+  ];
+
+  // Individually removable pills for whatever is currently active, so the effect of each
+  // filter is visible without opening the sheet. Only rendered when there's something to show.
+  const activePills: { key: string; label: string; onRemove: () => void }[] = [
+    ...(filters.q ? [{ key: "q", label: `"${filters.q}"`, onRemove: () => setDraft("") }] : []),
+    ...filters.types.map((type) => ({
+      key: `type-${type}`,
+      label: typeLabels[language][type],
+      onRemove: () => filters.update({ type: toggleInList(filters.types, type).join(",") || null }),
+    })),
+    ...filters.statuses.map((status) => ({
+      key: `status-${status}`,
+      label: statusLabels[language][status],
+      onRemove: () => filters.update({ status: toggleInList(filters.statuses, status).join(",") || null }),
+    })),
+    ...(filters.author !== "all"
+      ? [{ key: "author", label: authorOptions.find(([v]) => v === filters.author)![1], onRemove: () => filters.update({ author: null }) }]
+      : []),
+    ...(filters.vis !== "all"
+      ? [{ key: "vis", label: visOptions.find(([v]) => v === filters.vis)![1], onRemove: () => filters.update({ vis: null }) }]
+      : []),
+    ...(filters.discarded
+      ? [{ key: "discarded", label: t.showDiscarded, onRemove: () => filters.update({ discarded: null }) }]
+      : []),
+  ];
 
   return (
-    <div className="filter-bar">
-      <div className="filter-primary">
+    <>
+      <div className="filter-bar">
         <div className="search-field">
           <span className="search-icon">
             <Search size={16} aria-hidden="true" />
@@ -148,18 +202,86 @@ function FilterBar({
 
         <Button
           size="sm"
-          variant={expanded || activeCount > 0 ? "primary" : "secondary"}
-          icon={<ListFilter size={15} aria-hidden="true" />}
-          onClick={() => setExpanded((value) => !value)}
-          aria-expanded={expanded}
+          variant={activeCount > 0 ? "primary" : "secondary"}
+          icon={<SlidersHorizontal size={15} aria-hidden="true" />}
+          onClick={() => setSheetOpen(true)}
+          aria-haspopup="dialog"
         >
-          {t.filters}
-          {activeCount > 0 && ` (${activeCount})`}
+          <span className="sr-only-mobile">{t.filters}</span>
+          {activeCount > 0 && <span className="filter-trigger-badge">{activeCount}</span>}
         </Button>
+
+        <div className="segmented" role="group" aria-label={t.changeView}>
+          <button
+            type="button"
+            className="segmented-item"
+            aria-pressed={filters.view === "board"}
+            onClick={() => filters.update({ view: null })}
+          >
+            <Columns3 size={14} aria-hidden="true" />
+            <span className="sr-only">{t.viewBoard}</span>
+          </button>
+          <button
+            type="button"
+            className="segmented-item"
+            aria-pressed={filters.view === "list"}
+            onClick={() => filters.update({ view: "list" })}
+          >
+            <Rows3 size={14} aria-hidden="true" />
+            <span className="sr-only">{t.viewList}</span>
+          </button>
+        </div>
       </div>
 
-      {expanded && (
-        <div className="filter-advanced">
+      {(activePills.length > 0 || resultCount > 0) && (
+        <div className="result-line">
+          {activePills.length > 0 && (
+            <div className="filter-active-chips">
+              {activePills.map((pill) => (
+                <button
+                  key={pill.key}
+                  type="button"
+                  className="chip chip-neutral chip-removable"
+                  onClick={pill.onRemove}
+                  aria-label={t.removeFilter(pill.label)}
+                >
+                  {pill.label}
+                  <X size={11} aria-hidden="true" />
+                </button>
+              ))}
+              <button type="button" className="filter-active-clear" onClick={filters.reset}>
+                {t.clearFilters}
+              </button>
+            </div>
+          )}
+          <span className="result-line-count" style={activePills.length > 0 ? { marginLeft: "auto" } : undefined}>
+            {t.requestsCounted(resultCount)}
+          </span>
+        </div>
+      )}
+
+      <Sheet open={sheetOpen} onClose={() => setSheetOpen(false)} title={t.filtersTitle} closeLabel={t.close}>
+        <div className="filter-sections">
+          <div className="filter-cell">
+            <p className="filter-cell-label" id="filter-sort">
+              {t.sortBy}
+            </p>
+            <div className="filter-chips" role="group" aria-labelledby="filter-sort">
+              {SORTS.map((sort) => (
+                <button
+                  key={sort}
+                  type="button"
+                  className="filter-chip"
+                  aria-pressed={filters.sort === sort}
+                  onClick={() => filters.update({ sort: sort === "updated" ? null : sort })}
+                >
+                  {filters.sort === sort && <Check size={13} aria-hidden="true" />}
+                  {sortLabels[sort]}
+                </button>
+              ))}
+            </div>
+          </div>
+
           <div className="filter-cell">
             <p className="filter-cell-label" id="filter-type">
               {t.type}
@@ -205,13 +327,7 @@ function FilterBar({
               {t.author}
             </p>
             <div className="filter-chips" role="group" aria-labelledby="filter-author">
-              {(
-                [
-                  ["all", t.authorAll],
-                  ["mine", t.authorMine],
-                  ["others", t.authorOthers],
-                ] as [Author, string][]
-              ).map(([value, label]) => (
+              {authorOptions.map(([value, label]) => (
                 <button
                   key={value}
                   type="button"
@@ -231,13 +347,7 @@ function FilterBar({
                 {t.visibility}
               </p>
               <div className="filter-chips" role="group" aria-labelledby="filter-vis">
-                {(
-                  [
-                    ["all", t.visibilityAll],
-                    ["shared", t.shared],
-                    ["internal", t.internal],
-                  ] as [Vis, string][]
-                ).map(([value, label]) => (
+                {visOptions.map(([value, label]) => (
                   <button
                     key={value}
                     type="button"
@@ -251,92 +361,19 @@ function FilterBar({
               </div>
             </div>
           )}
+
+          <label className="filter-toggle-row">
+            <input
+              type="checkbox"
+              className="checkbox"
+              checked={filters.discarded}
+              onChange={(event) => filters.update({ discarded: event.target.checked ? "1" : null })}
+            />
+            {t.showDiscarded}
+          </label>
         </div>
-      )}
-
-      <div className="toolbar">
-        <span className="result-count">{t.requestsCounted(resultCount)}</span>
-        {activeCount > 0 && (
-          <Button size="sm" variant="ghost" onClick={filters.reset}>
-            {t.clearFilters}
-          </Button>
-        )}
-
-        <span className="toolbar-spacer" />
-
-        <Menu
-          label={t.sortBy}
-          trigger={(props) => (
-            <button type="button" className="btn btn-secondary btn-sm" {...props}>
-              {
-                {
-                  updated: t.sortUpdated,
-                  votes: t.sortVotes,
-                  newest: t.sortNewest,
-                  oldest: t.sortOldest,
-                }[filters.sort]
-              }
-              <ChevronDown size={14} aria-hidden="true" />
-            </button>
-          )}
-        >
-          {(close) => (
-            <>
-              <MenuLabel>{t.sortBy}</MenuLabel>
-              {SORTS.map((sort) => (
-                <MenuItem
-                  key={sort}
-                  icon={
-                    filters.sort === sort ? (
-                      <Check size={14} aria-hidden="true" />
-                    ) : (
-                      <span style={{ width: 14 }} aria-hidden="true" />
-                    )
-                  }
-                  onClick={() => {
-                    filters.update({ sort: sort === "updated" ? null : sort });
-                    close();
-                  }}
-                >
-                  {{ updated: t.sortUpdated, votes: t.sortVotes, newest: t.sortNewest, oldest: t.sortOldest }[sort]}
-                </MenuItem>
-              ))}
-            </>
-          )}
-        </Menu>
-
-        <div className="segmented" role="group" aria-label={t.changeView}>
-          <button
-            type="button"
-            className="segmented-item"
-            aria-pressed={filters.view === "board"}
-            onClick={() => filters.update({ view: null })}
-          >
-            <Columns3 size={14} aria-hidden="true" />
-            <span className="sr-only">{t.viewBoard}</span>
-          </button>
-          <button
-            type="button"
-            className="segmented-item"
-            aria-pressed={filters.view === "list"}
-            onClick={() => filters.update({ view: "list" })}
-          >
-            <Rows3 size={14} aria-hidden="true" />
-            <span className="sr-only">{t.viewList}</span>
-          </button>
-        </div>
-
-        <label className="filter-chip" style={{ cursor: "pointer", gap: 8 }}>
-          <input
-            type="checkbox"
-            className="checkbox"
-            checked={filters.discarded}
-            onChange={(event) => filters.update({ discarded: event.target.checked ? "1" : null })}
-          />
-          {t.showDiscarded}
-        </label>
-      </div>
-    </div>
+      </Sheet>
+    </>
   );
 }
 
@@ -475,59 +512,53 @@ export function AppBacklogPage({ appId }: { appId: string }) {
 
   return (
     <div className="page">
-      <header className="page-header">
-        <div className="page-header-row">
-          <div className="page-title-group">
-            <AppIcon name={app?.name ?? ""} logoUrl={app?.logoUrl} className="page-app-icon" />
-            <div style={{ minWidth: 0 }}>
-              {apps.length > 1 ? (
-                <Menu
-                  label={t.chooseApp}
-                  trigger={(props) => (
-                    // The switcher is the page's h1: it names the page *and* changes it.
-                    <h1 className="t-display">
-                      <button
-                        type="button"
-                        style={{ display: "flex", alignItems: "center", gap: 6, borderRadius: 6, font: "inherit", letterSpacing: "inherit" }}
-                        {...props}
+      <header className="page-header-board">
+        <div className="page-title-group">
+          <AppIcon name={app?.name ?? ""} logoUrl={app?.logoUrl} className="page-app-icon" />
+          <div style={{ minWidth: 0 }}>
+            {apps.length > 1 ? (
+              <Menu
+                label={t.chooseApp}
+                trigger={(props) => (
+                  // The switcher is the page's h1: it names the page *and* changes it.
+                  <h1 className="t-display page-title">
+                    <button type="button" className="page-title-trigger" {...props}>
+                      <span className="page-title-text">{app?.name ?? appId}</span>
+                      <ChevronDown size={18} aria-hidden="true" style={{ flexShrink: 0 }} />
+                    </button>
+                  </h1>
+                )}
+              >
+                {(close) => (
+                  <>
+                    <MenuLabel>{t.apps}</MenuLabel>
+                    {apps.map((entry) => (
+                      <Link
+                        key={entry.id}
+                        href={`/a/${encodeURIComponent(entry.id)}`}
+                        className="menu-item"
+                        role="menuitem"
+                        onClick={close}
                       >
-                        {app?.name ?? appId}
-                        <ChevronDown size={18} aria-hidden="true" />
-                      </button>
-                    </h1>
-                  )}
-                >
-                  {(close) => (
-                    <>
-                      <MenuLabel>{t.apps}</MenuLabel>
-                      {apps.map((entry) => (
-                        <Link
-                          key={entry.id}
-                          href={`/a/${encodeURIComponent(entry.id)}`}
-                          className="menu-item"
-                          role="menuitem"
-                          onClick={close}
-                        >
-                          <AppIcon name={entry.name} logoUrl={entry.logoUrl} className="menu-app-icon" />
-                          {entry.name}
-                          {entry.id === appId && <Check size={14} style={{ marginLeft: "auto" }} aria-hidden="true" />}
-                        </Link>
-                      ))}
-                    </>
-                  )}
-                </Menu>
-              ) : (
-                <h1 className="t-display">{app?.name ?? appId}</h1>
-              )}
-              {app?.description && <p className="page-subtitle">{app.description}</p>}
-            </div>
+                        <AppIcon name={entry.name} logoUrl={entry.logoUrl} className="menu-app-icon" />
+                        {entry.name}
+                        {entry.id === appId && <Check size={14} style={{ marginLeft: "auto" }} aria-hidden="true" />}
+                      </Link>
+                    ))}
+                  </>
+                )}
+              </Menu>
+            ) : (
+              <h1 className="t-display page-title">{app?.name ?? appId}</h1>
+            )}
+            {app?.description && <p className="page-subtitle">{app.description}</p>}
           </div>
-
-          <Link href={`/a/${encodeURIComponent(appId)}/new`} className="btn btn-primary">
-            <Plus size={17} aria-hidden="true" />
-            {t.newRequest}
-          </Link>
         </div>
+
+        <Link href={`/a/${encodeURIComponent(appId)}/new`} className="btn btn-primary page-new-btn">
+          <Plus size={18} aria-hidden="true" />
+          <span className="sr-only-mobile">{t.newRequest}</span>
+        </Link>
       </header>
 
       {isError ? (
@@ -547,7 +578,7 @@ export function AppBacklogPage({ appId }: { appId: string }) {
             ) : (
               <div className="board" style={{ ["--board-columns" as string]: columns.length }}>
                 {columns.map((status) => (
-                  <section className="board-column" key={status}>
+                  <section className={`board-column board-column-${status}`} key={status}>
                     <div className="column-header">
                       <StatusDot status={status} />
                       <span className="column-title">{statusLabels[language][status]}</span>
@@ -617,7 +648,7 @@ export function AppBacklogPage({ appId }: { appId: string }) {
                 const isCollapsed = collapsed.includes(status);
                 const headingId = `column-${status}`;
                 return (
-                  <section className="board-column" key={status} aria-labelledby={headingId}>
+                  <section className={`board-column board-column-${status}`} key={status} aria-labelledby={headingId}>
                     <div className="column-header">
                       {/* The count sits outside the heading so the accessible name stays
                           "Pendents" rather than running together as "Pendents3". */}

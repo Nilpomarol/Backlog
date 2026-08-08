@@ -15,10 +15,12 @@ import {
 } from "lucide-react";
 import { useIsFetching } from "@tanstack/react-query";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
-import { useState, useSyncExternalStore, type ReactNode } from "react";
+import { usePathname, useSearchParams } from "next/navigation";
+import { useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
+import { rememberVisitedUrl } from "../lib/board-return";
 import { LANGUAGES, type Language } from "../lib/i18n";
 import { useAllItems, useApps } from "../lib/queries";
+import { isRouteTransitionPending, markRouteTransitionEnd, subscribeRouteTransition } from "../lib/route-transition";
 import { useAuth, useLanguage } from "./providers";
 import { AppIcon, Avatar, Button, SegmentedControl, SkeletonCard } from "./ui/primitives";
 import { Sheet } from "./ui/overlay";
@@ -219,6 +221,7 @@ function ReadyShell({ children }: { children: ReactNode }) {
   const { t } = useLanguage();
   const { profile, signOut } = useAuth();
   const pathname = usePathname();
+  const searchParams = useSearchParams();
   const [moreOpen, setMoreOpen] = useState(false);
   const isAdmin = profile?.role === "admin";
 
@@ -229,6 +232,23 @@ function ReadyShell({ children }: { children: ReactNode }) {
   );
   // Background refetches get a thin top bar; the content underneath stays interactive.
   const backgroundFetches = useIsFetching();
+  // Covers the router-navigation gap too (including back/forward, which vinext resolves over
+  // the network rather than instantly) — see lib/route-transition.ts.
+  const routeTransitionPending = useSyncExternalStore(subscribeRouteTransition, isRouteTransitionPending, () => false);
+  useEffect(() => {
+    markRouteTransitionEnd();
+  }, [pathname, searchParams]);
+
+  // Tracks "the page before this one" across every navigation in the app (see
+  // lib/board-return.ts) — not just the board, so breadcrumbs elsewhere (e.g. a subtask's
+  // parent) can return you to wherever you actually came from.
+  const currentUrlRef = useRef<string | null>(null);
+  useEffect(() => {
+    const search = searchParams.toString();
+    const url = search ? `${pathname}?${search}` : pathname;
+    if (currentUrlRef.current && currentUrlRef.current !== url) rememberVisitedUrl(currentUrlRef.current);
+    currentUrlRef.current = url;
+  }, [pathname, searchParams]);
 
   const { data: apps = [] } = useApps();
   // Admins get a triage badge. Reusing the unfiltered cross-app query means the overview and
@@ -255,7 +275,7 @@ function ReadyShell({ children }: { children: ReactNode }) {
         {t.skipToContent}
       </a>
 
-      {backgroundFetches > 0 && <div className="route-progress" aria-hidden="true" />}
+      {(backgroundFetches > 0 || routeTransitionPending) && <div className="route-progress" aria-hidden="true" />}
 
       <nav className="sidebar" aria-label={t.primaryNavigation}>
         <div className="brand">

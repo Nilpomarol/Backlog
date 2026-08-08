@@ -84,6 +84,8 @@ const ca = {
   columnEmpty: "Res aquí",
   requestsCounted: (n: number) => (n === 1 ? "1 proposta" : `${n} propostes`),
   filtersActive: (n: number) => (n === 1 ? "1 filtre actiu" : `${n} filtres actius`),
+  removeFilter: (label: string) => `Treu el filtre: ${label}`,
+  filtersTitle: "Filtres i ordre",
 
   // Request card and detail
   votes: "vots",
@@ -354,6 +356,8 @@ const en: Dictionary = {
   columnEmpty: "Nothing here",
   requestsCounted: (n: number) => (n === 1 ? "1 request" : `${n} requests`),
   filtersActive: (n: number) => (n === 1 ? "1 active filter" : `${n} active filters`),
+  removeFilter: (label: string) => `Remove filter: ${label}`,
+  filtersTitle: "Filters & sort",
 
   votes: "votes",
   voteAction: "Vote",

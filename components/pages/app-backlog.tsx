@@ -18,13 +18,15 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ALL_STATUSES,
   BOARD_STATUSES,
+  ITEM_PRIORITIES,
   ITEM_TYPES,
+  isItemPriority,
   isItemStatus,
   isItemType,
   type ItemStatus,
   type RequestSummary,
 } from "../../lib/domain";
-import { statusLabels, typeLabels } from "../../lib/i18n";
+import { priorityLabels, statusLabels, typeLabels } from "../../lib/i18n";
 import { useAppItems, useApps, useErrorMessage, useSetStatus, useSetVisibility } from "../../lib/queries";
 import { StatusDot } from "../badges";
 import { useAuth, useLanguage } from "../providers";
@@ -52,6 +54,7 @@ function useFilters() {
       q: params.get("q") ?? "",
       types: list("type").filter(isItemType),
       statuses: list("status").filter(isItemStatus),
+      priorities: list("priority").filter(isItemPriority),
       author: (params.get("author") ?? "all") as Author,
       vis: (params.get("vis") ?? "all") as Vis,
       sort: (SORTS.includes(params.get("sort") as Sort) ? params.get("sort") : "updated") as Sort,
@@ -136,6 +139,7 @@ function FilterBar({
   const activeCount =
     filters.types.length +
     filters.statuses.length +
+    filters.priorities.length +
     (filters.author !== "all" ? 1 : 0) +
     (filters.vis !== "all" ? 1 : 0) +
     (filters.q ? 1 : 0);
@@ -164,6 +168,11 @@ function FilterBar({
       key: `status-${status}`,
       label: statusLabels[language][status],
       onRemove: () => filters.update({ status: toggleInList(filters.statuses, status).join(",") || null }),
+    })),
+    ...filters.priorities.map((priority) => ({
+      key: `priority-${priority}`,
+      label: priorityLabels[language][priority],
+      onRemove: () => filters.update({ priority: toggleInList(filters.priorities, priority).join(",") || null }),
     })),
     ...(filters.author !== "all"
       ? [{ key: "author", label: authorOptions.find(([v]) => v === filters.author)![1], onRemove: () => filters.update({ author: null }) }]
@@ -301,6 +310,25 @@ function FilterBar({
             </div>
           </div>
 
+          <div className="filter-cell">
+            <p className="filter-cell-label" id="filter-priority">
+              {t.priority}
+            </p>
+            <div className="filter-chips" role="group" aria-labelledby="filter-priority">
+              {ITEM_PRIORITIES.map((priority) => (
+                <button
+                  key={priority}
+                  type="button"
+                  className="filter-chip"
+                  aria-pressed={filters.priorities.includes(priority)}
+                  onClick={() => filters.update({ priority: toggleInList(filters.priorities, priority).join(",") || null })}
+                >
+                  {priorityLabels[language][priority]}
+                </button>
+              ))}
+            </div>
+          </div>
+
           {filters.view === "list" && (
             <div className="filter-cell">
               <p className="filter-cell-label" id="filter-status">
@@ -387,6 +415,7 @@ function applyFilters(
     if (!filters.discarded && item.status === "discarded") return false;
     if (filters.statuses.length > 0 && !filters.statuses.includes(item.status)) return false;
     if (filters.types.length > 0 && !filters.types.includes(item.type)) return false;
+    if (filters.priorities.length > 0 && !filters.priorities.includes(item.priority)) return false;
     if (filters.author === "mine" && item.creatorId !== currentUserId) return false;
     if (filters.author === "others" && item.creatorId === currentUserId) return false;
     if (filters.vis !== "all" && item.visibility !== filters.vis) return false;

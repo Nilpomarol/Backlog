@@ -5,7 +5,7 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 import { classes, formatRelative } from "../lib/format";
 import type { RequestSummary } from "../lib/domain";
-import { InternalChip, StatusPill, TypeChip } from "./badges";
+import { InternalChip, PriorityChip, StatusPill, TypeChip } from "./badges";
 import { useAuth, useLanguage } from "./providers";
 import { AppIcon, Avatar } from "./ui/primitives";
 import { VoteButton } from "./vote-button";
@@ -69,6 +69,7 @@ export function RequestCard({ request }: { request: RequestSummary }) {
           </Link>
         </h3>
         <div className="request-card-badges">
+          {request.priority !== "none" && <PriorityChip priority={request.priority} iconOnly />}
           <TypeChip type={request.type} iconOnly />
           {request.visibility === "internal" && <InternalChip iconOnly />}
         </div>
@@ -138,6 +139,7 @@ export function RequestRow({
           )}
           <TypeChip type={request.type} />
           {showStatus && <StatusPill status={request.status} />}
+          {request.priority !== "none" && <PriorityChip priority={request.priority} />}
           {request.visibility === "internal" && <InternalChip />}
         </div>
 

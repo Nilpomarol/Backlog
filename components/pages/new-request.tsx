@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowLeft, Lightbulb } from "lucide-react";
+import { ArrowLeft, ChevronDown, Lightbulb } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState, type FormEvent } from "react";
@@ -45,6 +45,7 @@ export function NewRequestPage({ appId }: { appId: string }) {
   const [type, setType] = useState<ItemType>("feature");
   const [visibility, setVisibility] = useState<Visibility>("shared");
   const [touched, setTouched] = useState(false);
+  const [detailsOpen, setDetailsOpen] = useState(false);
 
   // Debounce the title before asking the server for possible duplicates.
   const [debouncedTitle, setDebouncedTitle] = useState("");
@@ -107,126 +108,144 @@ export function NewRequestPage({ appId }: { appId: string }) {
       </header>
 
       <form onSubmit={submit} noValidate>
-        <TextField
-          label={t.titleLabel}
-          value={title}
-          onChange={(event) => setTitle(event.target.value)}
-          onBlur={() => setTouched(true)}
-          placeholder={t.titlePlaceholder}
-          maxLength={TITLE_MAX}
-          error={titleError}
-          large
-          autoFocus
-          required
-        />
+        <div className="new-request-card">
+          <TextField
+            label={t.titleLabel}
+            value={title}
+            onChange={(event) => setTitle(event.target.value)}
+            onBlur={() => setTouched(true)}
+            placeholder={t.titlePlaceholder}
+            maxLength={TITLE_MAX}
+            error={titleError}
+            large
+            autoFocus
+            required
+          />
 
-        {suggestions.length > 0 && (
-          <div className="duplicates" style={{ marginBottom: "var(--space-4)" }}>
-            <p className="duplicates-title">
-              <Lightbulb size={13} aria-hidden="true" style={{ verticalAlign: -2, marginRight: 4 }} />
-              {t.duplicatesTitle}
+          {suggestions.length > 0 && (
+            <div className="duplicates" style={{ marginBottom: "var(--space-4)" }}>
+              <p className="duplicates-title">
+                <Lightbulb size={13} aria-hidden="true" style={{ verticalAlign: -2, marginRight: 4 }} />
+                {t.duplicatesTitle}
+              </p>
+              <p className="duplicates-hint">{t.duplicatesHint}</p>
+              {suggestions.map((item) => (
+                <div className="duplicate-row" key={item.id}>
+                  <span className="duplicate-body">
+                    <span className="duplicate-title">{item.title}</span>
+                  </span>
+                  {item.full ? (
+                    <VoteButton request={item.full} />
+                  ) : (
+                    <span className="t-mono text-tertiary">{item.votes}</span>
+                  )}
+                  <Link href={`/r/${encodeURIComponent(item.id)}`} className="btn btn-secondary btn-sm">
+                    {t.openInstead}
+                  </Link>
+                </div>
+              ))}
+            </div>
+          )}
+
+          <div className="field">
+            <p className="field-label" id="type-label">
+              {t.typeLabel}
             </p>
-            <p className="duplicates-hint">{t.duplicatesHint}</p>
-            {suggestions.map((item) => (
-              <div className="duplicate-row" key={item.id}>
-                <span className="duplicate-body">
-                  <span className="duplicate-title">{item.title}</span>
-                </span>
-                {item.full ? (
-                  <VoteButton request={item.full} />
-                ) : (
-                  <span className="t-mono text-tertiary">{item.votes}</span>
-                )}
-                <Link href={`/r/${encodeURIComponent(item.id)}`} className="btn btn-secondary btn-sm">
-                  {t.openInstead}
-                </Link>
-              </div>
-            ))}
+            <div className="type-picker" role="radiogroup" aria-labelledby="type-label">
+              {ITEM_TYPES.map((value) => {
+                const Icon = typeIcons[value];
+                return (
+                  <button
+                    key={value}
+                    type="button"
+                    role="radio"
+                    aria-checked={type === value}
+                    className={`type-option type-option-${value}`}
+                    onClick={() => setType(value)}
+                  >
+                    <Icon size={16} aria-hidden="true" />
+                    {typeLabels[language][value]}
+                  </button>
+                );
+              })}
+            </div>
           </div>
-        )}
 
-        <div className="field">
-          <p className="field-label" id="type-label">
-            {t.typeLabel}
-          </p>
-          <div className="type-picker" role="radiogroup" aria-labelledby="type-label">
-            {ITEM_TYPES.map((value) => {
-              const Icon = typeIcons[value];
-              return (
-                <button
-                  key={value}
-                  type="button"
-                  role="radio"
-                  aria-checked={type === value}
-                  className="type-option"
-                  onClick={() => setType(value)}
-                >
-                  <Icon size={20} aria-hidden="true" />
-                  {typeLabels[language][value]}
-                </button>
-              );
-            })}
-          </div>
+          <button
+            type="button"
+            className="disclosure-trigger"
+            aria-expanded={detailsOpen}
+            aria-controls="new-request-details"
+            onClick={() => setDetailsOpen((open) => !open)}
+          >
+            <ChevronDown size={16} aria-hidden="true" />
+            {detailsOpen ? t.hideDetails : t.addDetails}
+          </button>
+
+          {detailsOpen && (
+            <div className="disclosure-body" id="new-request-details">
+              <TextAreaField
+                label={t.descriptionLabel}
+                optional={t.optional}
+                value={description}
+                onChange={(event) => setDescription(event.target.value)}
+                placeholder={t.descriptionPlaceholder}
+                maxLength={DESCRIPTION_MAX}
+                rows={5}
+                autoFocus
+                trailing={
+                  descriptionLeft < 500 ? (
+                    <p className={`char-counter${descriptionLeft < 100 ? " char-counter-warn" : ""}`}>
+                      {t.charactersLeft(descriptionLeft)}
+                    </p>
+                  ) : undefined
+                }
+              />
+
+              {apps.length > 1 && (
+                <div className="field">
+                  <label className="field-label" htmlFor="target-app">
+                    {t.appLabel}
+                  </label>
+                  <select
+                    id="target-app"
+                    className="select"
+                    value={targetAppId}
+                    onChange={(event) => setTargetAppId(event.target.value)}
+                  >
+                    {apps.map((entry) => (
+                      <option key={entry.id} value={entry.id}>
+                        {entry.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
+              {isAdmin && (
+                <div className="field">
+                  <p className="field-label">{t.visibilityLabel}</p>
+                  <SegmentedControl<Visibility>
+                    label={t.visibilityLabel}
+                    value={visibility}
+                    onChange={setVisibility}
+                    options={[
+                      { value: "shared", label: t.shared },
+                      { value: "internal", label: t.internal },
+                    ]}
+                  />
+                  <p className="field-hint">{t.visibilityHint}</p>
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
-        <TextAreaField
-          label={t.descriptionLabel}
-          optional={t.optional}
-          value={description}
-          onChange={(event) => setDescription(event.target.value)}
-          placeholder={t.descriptionPlaceholder}
-          maxLength={DESCRIPTION_MAX}
-          rows={5}
-          trailing={
-            descriptionLeft < 500 ? (
-              <p className={`char-counter${descriptionLeft < 100 ? " char-counter-warn" : ""}`}>
-                {t.charactersLeft(descriptionLeft)}
-              </p>
-            ) : undefined
-          }
-        />
-
-        {apps.length > 1 && (
-          <div className="field">
-            <label className="field-label" htmlFor="target-app">
-              {t.appLabel}
-            </label>
-            <select
-              id="target-app"
-              className="select"
-              value={targetAppId}
-              onChange={(event) => setTargetAppId(event.target.value)}
-            >
-              {apps.map((entry) => (
-                <option key={entry.id} value={entry.id}>
-                  {entry.name}
-                </option>
-              ))}
-            </select>
-          </div>
-        )}
-
-        {isAdmin && (
-          <div className="field">
-            <p className="field-label">{t.visibilityLabel}</p>
-            <SegmentedControl<Visibility>
-              label={t.visibilityLabel}
-              value={visibility}
-              onChange={setVisibility}
-              options={[
-                { value: "shared", label: t.shared },
-                { value: "internal", label: t.internal },
-              ]}
-            />
-            <p className="field-hint">{t.visibilityHint}</p>
-          </div>
-        )}
-
-        <div className="btn-row btn-row-end" style={{ marginTop: "var(--space-6)" }}>
+        <div className="form-actions">
           <Link href={`/a/${encodeURIComponent(appId)}`} className="btn btn-secondary">
             {t.cancel}
           </Link>
-          <Button type="submit" variant="primary" loading={createRequest.isPending}>
+          <Button type="submit" variant="primary" size="lg" loading={createRequest.isPending}>
             {createRequest.isPending ? t.creating : t.create}
           </Button>
         </div>

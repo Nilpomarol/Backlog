@@ -20,6 +20,7 @@ export const api = new Hono<{ Bindings: ApiEnvironment; Variables: Variables }>(
 
 const itemType = z.enum(["bug", "feature", "improvement", "task"]);
 const itemStatus = z.enum(["backlog", "in_progress", "in_review", "done", "discarded"]);
+const itemPriority = z.enum(["urgent", "high", "medium", "low", "none"]);
 const itemVisibility = z.enum(["shared", "internal"]);
 const createItemSchema = z.object({
   appId: z.string().min(1).max(80),
@@ -340,7 +341,7 @@ api.get("/apps/:appId/items", async (context) => {
   if (!(await canAccessApp(client, currentUser, context.req.param("appId")))) return context.json({ error: { code: "not_found", message: "Application not found." } }, 404);
   const result = await client.execute({
     sql: `SELECT b.id, b.app_id AS appId, b.creator_id AS creatorId, b.title, b.description,
-            b.type, b.status, b.visibility, b.parent_id AS parentId, p.title AS parentTitle,
+            b.type, b.status, b.priority, b.visibility, b.parent_id AS parentId, p.title AS parentTitle,
             b.created_at AS createdAt, b.updated_at AS updatedAt,
             u.name AS creatorName, u.avatar_url AS creatorAvatarUrl, u.role AS creatorRole,
             COUNT(DISTINCT v.user_id) AS votes,
@@ -390,7 +391,7 @@ api.get("/items", async (context) => {
   const client = getClient(context.env);
   const result = await client.execute({
     sql: `SELECT b.id, b.app_id AS appId, b.creator_id AS creatorId, b.title, b.description,
-            b.type, b.status, b.visibility, b.parent_id AS parentId, p.title AS parentTitle,
+            b.type, b.status, b.priority, b.visibility, b.parent_id AS parentId, p.title AS parentTitle,
             b.created_at AS createdAt, b.updated_at AS updatedAt,
             a.name AS appName, a.logo_url AS appLogoUrl,
             u.name AS creatorName, u.avatar_url AS creatorAvatarUrl, u.role AS creatorRole,
@@ -419,7 +420,7 @@ api.get("/items/:id", async (context) => {
   const item = await findItem(client, context.req.param("id"));
   if (!item || !canReadItem(currentUser, item, await canAccessApp(client, currentUser, item.appId))) return context.json({ error: { code: "not_found", message: "Request not found." } }, 404);
   const detail = await client.execute({
-    sql: `SELECT b.id, b.app_id AS appId, b.creator_id AS creatorId, b.title, b.description, b.type, b.status, b.visibility,
+    sql: `SELECT b.id, b.app_id AS appId, b.creator_id AS creatorId, b.title, b.description, b.type, b.status, b.priority, b.visibility,
             b.parent_id AS parentId, p.title AS parentTitle,
             b.created_at AS createdAt, b.updated_at AS updatedAt, u.name AS creatorName, u.avatar_url AS creatorAvatarUrl, u.role AS creatorRole,
             COUNT(v.user_id) AS votes, MAX(CASE WHEN v.user_id = ? THEN 1 ELSE 0 END) AS voted
@@ -428,7 +429,7 @@ api.get("/items/:id", async (context) => {
     args: [currentUser.id, item.id],
   });
   const children = await client.execute({
-    sql: `SELECT c.id, c.app_id AS appId, c.creator_id AS creatorId, c.title, c.description, c.type, c.status, c.visibility,
+    sql: `SELECT c.id, c.app_id AS appId, c.creator_id AS creatorId, c.title, c.description, c.type, c.status, c.priority, c.visibility,
             c.parent_id AS parentId, c.created_at AS createdAt, c.updated_at AS updatedAt,
             u.name AS creatorName, u.avatar_url AS creatorAvatarUrl, u.role AS creatorRole,
             COUNT(DISTINCT v.user_id) AS votes, MAX(CASE WHEN v.user_id = ? THEN 1 ELSE 0 END) AS voted,
@@ -488,6 +489,18 @@ api.patch("/items/:id/status", async (context) => {
   if (!item) return context.json({ error: { code: "not_found", message: "Request not found." } }, 404);
   await client.execute({ sql: "UPDATE backlog_items SET status = ?, updated_at = ? WHERE id = ?", args: [parsed.data.status, Date.now(), item.id] });
   return context.json({ data: { id: item.id, status: parsed.data.status } });
+});
+
+api.patch("/items/:id/priority", async (context) => {
+  const parsed = z.object({ priority: itemPriority }).strict().safeParse(await context.req.json().catch(() => null));
+  if (!parsed.success) return context.json({ error: { code: "invalid_request", message: parsed.error.issues[0]?.message } }, 400);
+  const currentUser = context.get("user");
+  if (!canChangeWorkflow(currentUser)) return context.json({ error: { code: "forbidden", message: "Only administrators can set priority." } }, 403);
+  const client = getClient(context.env);
+  const item = await findItem(client, context.req.param("id"));
+  if (!item) return context.json({ error: { code: "not_found", message: "Request not found." } }, 404);
+  await client.execute({ sql: "UPDATE backlog_items SET priority = ?, updated_at = ? WHERE id = ?", args: [parsed.data.priority, Date.now(), item.id] });
+  return context.json({ data: { id: item.id, priority: parsed.data.priority } });
 });
 
 api.patch("/items/:id/visibility", async (context) => {

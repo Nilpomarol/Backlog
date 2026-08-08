@@ -15,6 +15,7 @@ import {
 } from "./api";
 import type {
   Application,
+  ItemPriority,
   ItemStatus,
   ItemType,
   ManagedApplication,
@@ -325,6 +326,26 @@ export function useSetStatus() {
     onMutate: async ({ id, status }: { id: string; status: ItemStatus }) => {
       const snapshot = await snapshotRequestCaches(client, id);
       patchRequestCaches(client, id, (item) => ({ ...item, status }));
+      return { ...snapshot, id };
+    },
+    onError: (_error, _input, context) => restoreRequestCaches(client, context?.id ?? "", context),
+    onSettled: (_data, _error, { id }) => invalidateRequestData(client, id),
+  });
+}
+
+export function useSetPriority() {
+  const { request } = useAuth();
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, priority }: { id: string; priority: ItemPriority }) => {
+      await request(`/items/${encodeURIComponent(id)}/priority`, {
+        method: "PATCH",
+        body: JSON.stringify({ priority }),
+      });
+    },
+    onMutate: async ({ id, priority }: { id: string; priority: ItemPriority }) => {
+      const snapshot = await snapshotRequestCaches(client, id);
+      patchRequestCaches(client, id, (item) => ({ ...item, priority }));
       return { ...snapshot, id };
     },
     onError: (_error, _input, context) => restoreRequestCaches(client, context?.id ?? "", context),

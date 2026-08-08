@@ -309,12 +309,12 @@ function ReadyShell({ children }: { children: ReactNode }) {
             active={isSettings}
           />
           {profile && (
-            <div className="nav-item" style={{ cursor: "default", gap: 10 }}>
+            <Link href="/settings/profile" className="nav-item" style={{ gap: 10 }}>
               <Avatar name={profile.name} url={profile.avatarUrl} admin={isAdmin} />
               <span className="nav-item-label" style={{ fontSize: 13 }}>
                 {profile.name}
               </span>
-            </div>
+            </Link>
           )}
         </div>
       </nav>

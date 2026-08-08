@@ -39,6 +39,23 @@
   --type-task-bg: #eaf0e9;
   --type-task-solid: #597060;
 
+  /* --- Priority semantics (urgency ramp: red → grey, distinct from the type hues above) --- */
+  --priority-urgent-text: #9c2b23;
+  --priority-urgent-bg: #fbe7e4;
+  --priority-urgent-solid: #c0392b;
+  --priority-high-text: #9a5416;
+  --priority-high-bg: #fceee0;
+  --priority-high-solid: #c17a2e;
+  --priority-medium-text: #8c7412;
+  --priority-medium-bg: #f9f3d9;
+  --priority-medium-solid: #b89a1f;
+  --priority-low-text: #2f6a8a;
+  --priority-low-bg: #e3eef4;
+  --priority-low-solid: #3f83a8;
+  --priority-none-text: #6b6f68;
+  --priority-none-bg: #ece9e2;
+  --priority-none-solid: #8a8a82;
+
   /* --- Status semantics (outlined pill + dot, separate hue track) -------- */
   --status-backlog: #7b776c;
   --status-backlog-text: #5d655d;
@@ -464,21 +481,63 @@ ul, ol { margin: 0; padding: 0; list-style: none; }
 }
 @media (pointer: coarse) { .segmented-item { min-height: 44px; min-width: 44px; } }
 
-/* --- Type picker (large, in the create form) --- */
+/* --- Type picker: compact pill row so it reads in one glance, not a tall grid --- */
 .type-picker { display: grid; grid-template-columns: repeat(2, 1fr); gap: var(--space-2); }
-@media (min-width: 640px) { .type-picker { grid-template-columns: repeat(4, 1fr); } }
+@media (min-width: 480px) { .type-picker { grid-template-columns: repeat(4, 1fr); } }
 .type-option {
-  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--space-2);
-  min-height: 76px; padding: var(--space-3);
-  border: 1px solid var(--border-control); border-radius: var(--radius-md);
+  display: flex; flex-direction: row; align-items: center; justify-content: center; gap: var(--space-2);
+  min-height: 44px; padding: var(--space-2) var(--space-2);
+  border: 1px solid var(--border-control); border-radius: var(--radius-full);
   background: var(--surface); color: var(--text-secondary);
   font-size: 13px; font-weight: 500;
-  transition: border-color var(--duration-fast) var(--ease-in), background var(--duration-fast) var(--ease-in);
+  transition: border-color var(--duration-fast) var(--ease-in), background var(--duration-fast) var(--ease-in),
+              color var(--duration-fast) var(--ease-in);
 }
 .type-option:hover { background: var(--surface-sunken); }
-.type-option[aria-checked="true"] {
-  border-color: var(--action); background: var(--surface); color: var(--text-primary);
-  font-weight: 600; box-shadow: inset 0 0 0 1px var(--action);
+.type-option[aria-checked="true"] { font-weight: 600; box-shadow: inset 0 0 0 1px currentColor; }
+.type-option-bug[aria-checked="true"] {
+  border-color: var(--type-bug-solid); background: var(--type-bug-bg); color: var(--type-bug-text);
+}
+.type-option-feature[aria-checked="true"] {
+  border-color: var(--type-feature-solid); background: var(--type-feature-bg); color: var(--type-feature-text);
+}
+.type-option-improvement[aria-checked="true"] {
+  border-color: var(--type-improvement-solid); background: var(--type-improvement-bg); color: var(--type-improvement-text);
+}
+.type-option-task[aria-checked="true"] {
+  border-color: var(--type-task-solid); background: var(--type-task-bg); color: var(--type-task-text);
+}
+
+/* --- New-request form: everything essential fits in one card; optional fields collapse away
+   so the common "type a title, hit go" mobile flow never requires scrolling. --- */
+.new-request-card {
+  background: var(--surface); border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg); padding: var(--space-5);
+  box-shadow: var(--shadow-sm);
+}
+.new-request-card .field:last-child { margin-bottom: 0; }
+
+.disclosure-trigger {
+  display: flex; align-items: center; gap: var(--space-2); width: 100%;
+  margin-top: var(--space-2); padding: var(--space-3) 0 0;
+  border-top: 1px solid var(--border-subtle);
+  font-size: 13px; font-weight: 600; color: var(--text-secondary);
+  text-align: left;
+}
+.disclosure-trigger:hover { color: var(--text-primary); }
+.disclosure-trigger svg { flex-shrink: 0; transition: transform var(--duration-fast) var(--ease-in); }
+.disclosure-trigger[aria-expanded="true"] svg { transform: rotate(180deg); }
+.disclosure-body { margin-top: var(--space-4); }
+.disclosure-body .field:last-child { margin-bottom: 0; }
+@media (pointer: coarse) { .disclosure-trigger { min-height: 44px; } }
+
+.form-actions { display: flex; align-items: center; justify-content: flex-end; gap: var(--space-2); margin-top: var(--space-6); }
+@media (max-width: 639px) {
+  /* Primary action leads and goes full-width; cancel becomes a quiet, secondary link below it —
+     the thumb never has to travel to a corner to finish. */
+  .form-actions { flex-direction: column-reverse; align-items: stretch; }
+  .form-actions .btn-primary { width: 100%; }
+  .form-actions .btn-secondary { border-color: transparent; background: transparent; }
 }
 
 /* ==========================================================================
@@ -496,14 +555,19 @@ ul, ol { margin: 0; padding: 0; list-style: none; }
 .chip-task        { background: var(--type-task-bg);        color: var(--type-task-text); }
 .chip-neutral     { background: var(--surface-sunken);      color: var(--text-secondary); }
 .chip-internal    { background: var(--type-task-bg);        color: var(--type-task-text); }
+.chip-priority-urgent { background: var(--priority-urgent-bg); color: var(--priority-urgent-text); }
+.chip-priority-high   { background: var(--priority-high-bg);   color: var(--priority-high-text); }
+.chip-priority-medium { background: var(--priority-medium-bg); color: var(--priority-medium-text); }
+.chip-priority-low    { background: var(--priority-low-bg);    color: var(--priority-low-text); }
+.chip-priority-none   { background: var(--priority-none-bg);   color: var(--priority-none-text); }
 .chip-logo {
   width: 14px; height: 14px; margin-left: -2px; flex-shrink: 0; overflow: hidden;
   border-radius: 3px; display: inline-grid; place-items: center; line-height: 1;
 }
 
-/* Icon-only badges: same data (type, internal) as the chips above, but for contexts where the
-   title should lead and these become a quiet corner marker instead of a labelled pill. */
-.type-badge, .internal-badge {
+/* Icon-only badges: same data (type, priority, internal) as the chips above, but for contexts
+   where the title should lead and these become a quiet corner marker instead of a labelled pill. */
+.type-badge, .priority-badge, .internal-badge {
   display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0;
   width: 22px; height: 22px; border-radius: var(--radius-sm);
 }
@@ -511,6 +575,11 @@ ul, ol { margin: 0; padding: 0; list-style: none; }
 .type-badge-feature     { background: var(--type-feature-solid);     color: #fff; }
 .type-badge-improvement { background: var(--type-improvement-solid); color: #fff; }
 .type-badge-task        { background: var(--type-task-solid);        color: #fff; }
+.priority-badge-urgent { background: var(--priority-urgent-solid); color: #fff; }
+.priority-badge-high   { background: var(--priority-high-solid);   color: #fff; }
+.priority-badge-medium { background: var(--priority-medium-solid); color: #fff; }
+.priority-badge-low    { background: var(--priority-low-solid);    color: #fff; }
+.priority-badge-none   { background: var(--surface-sunken); color: var(--text-tertiary); border: 1px solid var(--border-subtle); }
 .internal-badge {
   background: var(--surface-sunken); color: var(--text-secondary);
   border: 1px solid var(--border-subtle);

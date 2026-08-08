@@ -1,6 +1,7 @@
 export type Role = "admin" | "user";
 export type ItemType = "bug" | "feature" | "improvement" | "task";
 export type ItemStatus = "backlog" | "in_progress" | "in_review" | "done" | "discarded";
+export type ItemPriority = "urgent" | "high" | "medium" | "low" | "none";
 export type Visibility = "shared" | "internal";
 export type InvitationStatus = "pending" | "linked" | "revoked";
 
@@ -45,6 +46,7 @@ export type RequestSummary = {
   description: string | null;
   type: ItemType;
   status: ItemStatus;
+  priority: ItemPriority;
   visibility: Visibility;
   parentId: string | null;
   parentTitle: string | null;
@@ -78,6 +80,9 @@ export const BOARD_STATUSES: ItemStatus[] = ["backlog", "in_progress", "in_revie
 export const ALL_STATUSES: ItemStatus[] = [...BOARD_STATUSES, "discarded"];
 export const ITEM_TYPES: ItemType[] = ["bug", "feature", "improvement", "task"];
 
+/** Most urgent first — the order every priority picker/stepper renders in. */
+export const ITEM_PRIORITIES: ItemPriority[] = ["urgent", "high", "medium", "low", "none"];
+
 /** Statuses that count as "active" — mirrors the API's active-item count. */
 export const ACTIVE_STATUSES: ItemStatus[] = ["backlog", "in_progress", "in_review"];
 
@@ -87,6 +92,10 @@ export function isItemType(value: string): value is ItemType {
 
 export function isItemStatus(value: string): value is ItemStatus {
   return (ALL_STATUSES as string[]).includes(value);
+}
+
+export function isItemPriority(value: string): value is ItemPriority {
+  return (ITEM_PRIORITIES as string[]).includes(value);
 }
 
 // --- Permission mirrors -------------------------------------------------------------------

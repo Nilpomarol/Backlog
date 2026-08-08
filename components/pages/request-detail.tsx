@@ -16,10 +16,12 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import {
   ALL_STATUSES,
+  ITEM_PRIORITIES,
   canEditRequest,
   canChangeWorkflow,
   canManageSubtasks,
   voteBlockedReason,
+  type ItemPriority,
   type ItemStatus,
 } from "../../lib/domain";
 import { useBackHref } from "../../lib/board-return";
@@ -30,11 +32,12 @@ import {
   useDeleteRequest,
   useErrorMessage,
   useRequest,
+  useSetPriority,
   useSetStatus,
   useSetVisibility,
   useUpdateRequest,
 } from "../../lib/queries";
-import { AdminChip, InternalChip, StatusDot, StatusPill, TypeChip } from "../badges";
+import { AdminChip, InternalChip, PriorityChip, StatusDot, StatusPill, TypeChip, priorityIcons, usePriorityLabel } from "../badges";
 import { ChildCardList } from "../child-cards";
 import { useAuth, useLanguage } from "../providers";
 import { Avatar, Button, SkeletonList } from "../ui/primitives";
@@ -55,8 +58,10 @@ export function RequestDetailPage({ requestId }: { requestId: string }) {
 
   const update = useUpdateRequest();
   const setStatus = useSetStatus();
+  const setPriority = useSetPriority();
   const setVisibility = useSetVisibility();
   const remove = useDeleteRequest();
+  const priorityLabel = usePriorityLabel();
 
   const [editingTitle, setEditingTitle] = useState(false);
   const [titleDraft, setTitleDraft] = useState("");
@@ -150,6 +155,21 @@ export function RequestDetailPage({ requestId }: { requestId: string }) {
     );
   }
 
+  function changePriority(priority: ItemPriority) {
+    const previous = request!.priority;
+    setPriority.mutate(
+      { id: request!.id, priority },
+      {
+        onError,
+        onSuccess: () =>
+          toast(t.toastPriorityChanged, {
+            actionLabel: t.undo,
+            onAction: () => setPriority.mutate({ id: request!.id, priority: previous }, { onError }),
+          }),
+      },
+    );
+  }
+
   return (
     <div className="page page-prose">
       <nav className="breadcrumb" aria-label={t.backTo}>
@@ -168,6 +188,7 @@ export function RequestDetailPage({ requestId }: { requestId: string }) {
         <div className="detail-flags">
           <TypeChip type={request.type} />
           <StatusPill status={request.status} />
+          <PriorityChip priority={request.priority} />
           {request.visibility === "internal" && <InternalChip />}
           {request.creatorRole === "admin" && <AdminChip />}
 
@@ -416,6 +437,36 @@ export function RequestDetailPage({ requestId }: { requestId: string }) {
                 {statusLabelsSingular[language][status]}
               </button>
             ))}
+          </div>
+        </section>
+      )}
+
+      {/* Priority — same admin-only triage action as status, kept as its own section so it stays
+          scannable rather than folded into the status stepper above. */}
+      {mayWorkflow && (
+        <section className="detail-section" aria-labelledby="priority-heading">
+          <div className="detail-section-title">
+            <h2 id="priority-heading" style={{ font: "inherit", letterSpacing: "inherit" }}>
+              {t.priority}
+            </h2>
+          </div>
+          <div className="stepper" role="group" aria-label={t.changePriority}>
+            {ITEM_PRIORITIES.map((priority) => {
+              const Icon = priorityIcons[priority];
+              return (
+                <button
+                  key={priority}
+                  type="button"
+                  className="stepper-step"
+                  aria-current={request.priority === priority}
+                  disabled={setPriority.isPending || request.priority === priority}
+                  onClick={() => changePriority(priority)}
+                >
+                  {request.priority === priority ? <Check size={13} aria-hidden="true" /> : <Icon size={13} aria-hidden="true" />}
+                  {priorityLabel(priority)}
+                </button>
+              );
+            })}
           </div>
         </section>
       )}

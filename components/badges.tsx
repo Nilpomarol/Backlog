@@ -1,9 +1,9 @@
 "use client";
 
-import { Bug, Lightbulb, Lock, ShieldCheck, TrendingUp, Wrench } from "lucide-react";
-import type { ItemStatus, ItemType } from "../lib/domain";
+import { Bug, ChevronDown, ChevronsUp, ChevronUp, CircleDashed, Lightbulb, Lock, Minus, ShieldCheck, TrendingUp, Wrench } from "lucide-react";
+import type { ItemPriority, ItemStatus, ItemType } from "../lib/domain";
 import { useLanguage } from "./providers";
-import { statusLabels, statusLabelsSingular, typeLabels } from "../lib/i18n";
+import { priorityLabels, statusLabels, statusLabelsSingular, typeLabels } from "../lib/i18n";
 
 /** Type is always icon + colour + label: never colour alone (WCAG 1.4.1). */
 const typeIcons: Record<ItemType, typeof Bug> = {
@@ -39,6 +39,45 @@ export function TypeChip({
 
   return (
     <span className={`chip chip-${type}`}>
+      <Icon size={size} aria-hidden="true" />
+      {label}
+    </span>
+  );
+}
+
+/** Priority is always icon + colour + label too, same WCAG rationale as type above. */
+const priorityIcons: Record<ItemPriority, typeof ChevronsUp> = {
+  urgent: ChevronsUp,
+  high: ChevronUp,
+  medium: Minus,
+  low: ChevronDown,
+  none: CircleDashed,
+};
+
+export function PriorityChip({
+  priority,
+  size = 12,
+  iconOnly = false,
+}: {
+  priority: ItemPriority;
+  size?: number;
+  /** Same "quiet corner marker" variant as `TypeChip`'s — icon + colour + tooltip, no label. */
+  iconOnly?: boolean;
+}) {
+  const { language } = useLanguage();
+  const Icon = priorityIcons[priority];
+  const label = priorityLabels[language][priority];
+
+  if (iconOnly) {
+    return (
+      <span className={`priority-badge priority-badge-${priority}`} role="img" aria-label={label} title={label}>
+        <Icon size={size} aria-hidden="true" />
+      </span>
+    );
+  }
+
+  return (
+    <span className={`chip chip-priority-${priority}`}>
       <Icon size={size} aria-hidden="true" />
       {label}
     </span>
@@ -100,4 +139,9 @@ export function useTypeLabel() {
   return (type: ItemType) => typeLabels[language][type];
 }
 
-export { typeIcons };
+export function usePriorityLabel() {
+  const { language } = useLanguage();
+  return (priority: ItemPriority) => priorityLabels[language][priority];
+}
+
+export { priorityIcons, typeIcons };

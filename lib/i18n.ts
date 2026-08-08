@@ -1,4 +1,4 @@
-import type { ItemStatus, ItemType } from "./domain";
+import type { ItemPriority, ItemStatus, ItemType } from "./domain";
 
 export type Language = "ca" | "en";
 export const LANGUAGES: Language[] = ["ca", "en"];
@@ -77,6 +77,7 @@ const ca = {
   visibilityAll: "Totes",
   type: "Tipus",
   status: "Estat",
+  priority: "Prioritat",
   noRequests: "Encara no hi ha propostes",
   noRequestsBody: "Sigues la primera persona a explicar què es podria millorar.",
   noMatches: "Cap proposta coincideix amb els filtres",
@@ -131,6 +132,7 @@ const ca = {
   notFoundBody: "Potser s’ha eliminat, o és una proposta interna a la qual no tens accés.",
   backToBacklog: "Torna al backlog",
   changeStatus: "Canvia l’estat",
+  changePriority: "Canvia la prioritat",
 
   // Create
   newRequestTitle: "Nova proposta",
@@ -139,6 +141,8 @@ const ca = {
   titlePlaceholder: "Escriu-ho en una frase",
   titleTooShort: "El títol ha de tenir com a mínim 3 caràcters.",
   typeLabel: "Quin tipus és?",
+  addDetails: "Afegeix detalls",
+  hideDetails: "Amaga els detalls",
   descriptionLabel: "Vols donar més context?",
   descriptionPlaceholder: "Què passava, què esperaves que passés…",
   optional: "Opcional",
@@ -266,6 +270,7 @@ const ca = {
   toastCreated: "Proposta creada",
   toastDeleted: "Proposta eliminada",
   toastStatusChanged: "Estat actualitzat",
+  toastPriorityChanged: "Prioritat actualitzada",
   toastDiscarded: "Proposta descartada",
   toastVisibilityChanged: "Visibilitat actualitzada",
   toastMoved: "Proposta moguda",
@@ -349,6 +354,7 @@ const en: Dictionary = {
   visibilityAll: "All",
   type: "Type",
   status: "Status",
+  priority: "Priority",
   noRequests: "No requests yet",
   noRequestsBody: "Be the first to say what could be better.",
   noMatches: "No requests match these filters",
@@ -402,6 +408,7 @@ const en: Dictionary = {
   notFoundBody: "It may have been deleted, or it’s an internal request you don’t have access to.",
   backToBacklog: "Back to the backlog",
   changeStatus: "Change status",
+  changePriority: "Change priority",
 
   newRequestTitle: "New request",
   newRequestSubtitle: "Tell us what’s broken or what you’d improve. One sentence is plenty.",
@@ -409,6 +416,8 @@ const en: Dictionary = {
   titlePlaceholder: "Say it in one sentence",
   titleTooShort: "The title needs at least 3 characters.",
   typeLabel: "What kind is it?",
+  addDetails: "Add details",
+  hideDetails: "Hide details",
   descriptionLabel: "Want to add more context?",
   descriptionPlaceholder: "What happened, what you expected instead…",
   optional: "Optional",
@@ -532,6 +541,7 @@ const en: Dictionary = {
   toastCreated: "Request created",
   toastDeleted: "Request deleted",
   toastStatusChanged: "Status updated",
+  toastPriorityChanged: "Priority updated",
   toastDiscarded: "Request discarded",
   toastVisibilityChanged: "Visibility updated",
   toastMoved: "Request moved",
@@ -589,6 +599,11 @@ export const statusLabelsSingular: Record<Language, Record<ItemStatus, string>> 
 export const typeLabels: Record<Language, Record<ItemType, string>> = {
   ca: { bug: "Error", feature: "Funcionalitat", improvement: "Millora", task: "Tasca" },
   en: { bug: "Bug", feature: "Feature", improvement: "Improvement", task: "Task" },
+};
+
+export const priorityLabels: Record<Language, Record<ItemPriority, string>> = {
+  ca: { urgent: "Urgent", high: "Alta", medium: "Mitjana", low: "Baixa", none: "Sense prioritat" },
+  en: { urgent: "Urgent", high: "High", medium: "Medium", low: "Low", none: "No priority" },
 };
 
 export const localeFor: Record<Language, string> = { ca: "ca-ES", en: "en-GB" };

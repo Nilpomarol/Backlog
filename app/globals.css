@@ -51,6 +51,13 @@
   --status-discarded: #908c83;
   --status-discarded-text: #686d65;
 
+  /* --- Status wash (column header tint: same hues, low saturation) ------- */
+  --status-backlog-bg: #ece9e2;
+  --status-in_progress-bg: #fbe6d4;
+  --status-in_review-bg: #e2f0ed;
+  --status-done-bg: #e5f2e6;
+  --status-discarded-bg: #eceae4;
+
   /* --- Semantic states -------------------------------------------------- */
   --destructive: #ad392d;
   --destructive-hover: #8e2d24;
@@ -143,6 +150,15 @@ ul, ol { margin: 0; padding: 0; list-style: none; }
 .sr-only {
   position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
   overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+}
+
+/* Visible from 480px up; hidden (screen-reader only) below it, for controls whose label is
+   worth the width on a wider screen but not worth crowding a phone-width toolbar. */
+@media (max-width: 479px) {
+  .sr-only-mobile {
+    position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+    overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+  }
 }
 
 .skip-link {
@@ -267,10 +283,6 @@ ul, ol { margin: 0; padding: 0; list-style: none; }
 @media (min-width: 768px) { .page { padding: var(--space-6) var(--space-6) var(--space-12); } }
 
 .page-header { margin-bottom: var(--space-5); }
-.page-header-row {
-  display: flex; align-items: flex-start; justify-content: space-between;
-  gap: var(--space-4); flex-wrap: wrap;
-}
 .page-title-group { display: flex; align-items: center; gap: var(--space-3); min-width: 0; }
 .page-app-icon {
   width: 40px; height: 40px; border-radius: var(--radius-md); flex-shrink: 0;
@@ -278,8 +290,32 @@ ul, ol { margin: 0; padding: 0; list-style: none; }
   background: #f7ead8; border: 1px solid var(--border-subtle);
 }
 .page-subtitle { color: var(--text-secondary); font-size: 14px; margin-top: 2px; }
-.page-title-group h1 > button { border-radius: var(--radius-sm); }
-@media (pointer: coarse) { .page-title-group h1 > button { min-height: 44px; } }
+
+/* --- App board header: a single compact row on mobile so "add a task" is always one thumb
+   tap away, never buried below a wrapped title. --- */
+.page-header-board {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: var(--space-2); flex-wrap: nowrap; margin-bottom: var(--space-3);
+}
+@media (min-width: 768px) { .page-header-board { margin-bottom: var(--space-5); } }
+.page-header-board .page-title-group { flex: 1; min-width: 0; gap: var(--space-2); }
+.page-header-board .page-app-icon {
+  width: 32px; height: 32px; font-size: 17px;
+}
+@media (min-width: 640px) { .page-header-board .page-app-icon { width: 40px; height: 40px; font-size: 22px; } }
+.page-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.page-title-trigger {
+  display: flex; align-items: center; gap: 6px; width: 100%; min-width: 0;
+  border-radius: var(--radius-sm); font: inherit; letter-spacing: inherit;
+}
+@media (pointer: coarse) { .page-title-trigger { min-height: 44px; } }
+.page-title-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Subtitle is the first thing to go on a small screen — the row must stay one line. */
+.page-header-board .page-subtitle {
+  display: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+@media (min-width: 640px) { .page-header-board .page-subtitle { display: block; } }
+.page-new-btn { flex-shrink: 0; }
 .section { margin-bottom: var(--space-8); }
 .section-header {
   display: flex; align-items: baseline; justify-content: space-between;
@@ -465,6 +501,21 @@ ul, ol { margin: 0; padding: 0; list-style: none; }
   border-radius: 3px; display: inline-grid; place-items: center; line-height: 1;
 }
 
+/* Icon-only badges: same data (type, internal) as the chips above, but for contexts where the
+   title should lead and these become a quiet corner marker instead of a labelled pill. */
+.type-badge, .internal-badge {
+  display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0;
+  width: 22px; height: 22px; border-radius: var(--radius-sm);
+}
+.type-badge-bug         { background: var(--type-bug-solid);         color: #fff; }
+.type-badge-feature     { background: var(--type-feature-solid);     color: #fff; }
+.type-badge-improvement { background: var(--type-improvement-solid); color: #fff; }
+.type-badge-task        { background: var(--type-task-solid);        color: #fff; }
+.internal-badge {
+  background: var(--surface-sunken); color: var(--text-secondary);
+  border: 1px solid var(--border-subtle);
+}
+
 .status-pill {
   display: inline-flex; align-items: center; gap: 6px; flex-shrink: 0;
   height: 22px; padding: 0 var(--space-2) 0 6px;
@@ -511,29 +562,52 @@ ul, ol { margin: 0; padding: 0; list-style: none; }
    ========================================================================== */
 
 .request-card {
-  position: relative; display: flex; flex-direction: column; gap: var(--space-2);
+  position: relative; display: flex; flex-direction: column; gap: 6px;
   padding: var(--space-3); background: var(--surface);
   border: 1px solid var(--border-subtle); border-radius: var(--radius-md);
   text-align: left; width: 100%;
-  transition: border-color var(--duration-fast) var(--ease-in), box-shadow var(--duration-fast) var(--ease-in);
+  transition: border-color var(--duration-fast) var(--ease-in), box-shadow var(--duration-fast) var(--ease-in),
+              transform var(--duration-fast) var(--ease-in);
 }
-.request-card:hover { border-color: var(--border-control); box-shadow: var(--shadow-sm); }
-.request-card-flags { display: flex; align-items: center; gap: var(--space-1); flex-wrap: wrap; }
+.request-card:hover { border-color: var(--border-control); box-shadow: var(--shadow-sm); transform: translateY(-1px); }
+
+/* Title leads; the type/visibility markers become quiet icon badges pinned to the top-right
+   corner instead of a row of labelled chips competing with it for the first read. */
+.request-card-top { display: flex; align-items: flex-start; gap: var(--space-2); }
+.request-card-badges { display: flex; align-items: center; gap: 4px; flex-shrink: 0; margin-top: 1px; }
 .request-card-title {
-  font-size: 14px; line-height: 20px; font-weight: 500; color: var(--text-primary);
+  flex: 1; min-width: 0;
+  font-size: 14px; line-height: 20px; font-weight: 600; color: var(--text-primary);
   display: -webkit-box; -webkit-line-clamp: 3; line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden;
 }
 .request-card-footer {
-  display: flex; align-items: center; gap: var(--space-2);
-  margin-top: var(--space-1); min-width: 0;
+  display: flex; align-items: center; gap: 6px;
+  margin-top: 2px; padding-top: 5px; min-width: 0;
+  border-top: 1px solid var(--border-subtle);
 }
-.request-card-author {
-  display: flex; align-items: center; gap: var(--space-2); min-width: 0; flex: 1;
-  font-size: 12px; color: var(--text-tertiary);
+.request-card-meta {
+  flex: 1; min-width: 0; display: flex; align-items: center; gap: 6px;
+  font-size: 12px; font-weight: 500; line-height: 1.2; color: var(--text-tertiary);
+  overflow: hidden; white-space: nowrap;
 }
-.request-card-author span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.request-card-author { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.request-card-meta time { flex-shrink: 0; }
+.meta-subtasks {
+  display: inline-flex; align-items: center; gap: 3px; flex-shrink: 0;
+  font-variant-numeric: tabular-nums;
+}
+.meta-subtasks-complete { color: var(--status-done-text); }
 .request-card-discarded .request-card-title { text-decoration: line-through; color: var(--text-tertiary); }
 .request-card-discarded { opacity: 0.7; }
+
+/* Subtask-of-parent backlink: contextual, not a category — plain small link, not a chip. */
+.subtask-of-link {
+  display: flex; align-items: center; gap: 4px; min-width: 0;
+  font-size: 11.5px; font-weight: 500; color: var(--text-tertiary);
+}
+.subtask-of-link span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.subtask-of-link:hover { color: var(--action); }
+.subtask-of-link svg { flex-shrink: 0; }
 
 /* The whole card is a link; the vote button and menu sit above it. */
 .card-link::after { content: ""; position: absolute; inset: 0; border-radius: var(--radius-md); }
@@ -561,57 +635,87 @@ ul, ol { margin: 0; padding: 0; list-style: none; }
    Vote button
    ========================================================================== */
 
+/* One-row pill by default (icon beside count) — compact height so it never out-grows the
+   footer line it sits in. The lg variant (detail page) is the same shape, just bigger, with
+   a text label alongside. */
 .vote-btn {
-  display: inline-flex; align-items: center; gap: 6px; flex-shrink: 0;
-  height: 28px; padding: 0 var(--space-2);
-  border: 1px solid var(--border-control); border-radius: var(--radius-full);
-  background: var(--surface); color: var(--text-secondary);
-  font-family: var(--font-mono); font-size: 13px; font-weight: 500; font-variant-numeric: tabular-nums;
+  display: inline-flex; flex-direction: row; align-items: center; justify-content: center;
+  gap: 4px; flex-shrink: 0;
+  height: 22px; padding: 0 8px;
+  border: 1px solid var(--border-subtle); border-radius: var(--radius-full);
+  background: var(--surface-sunken); color: var(--text-secondary);
+  font-family: var(--font-mono); font-size: 12px; font-weight: 700; line-height: 1;
+  font-variant-numeric: tabular-nums;
   transition: background var(--duration-fast) var(--ease-in), border-color var(--duration-fast) var(--ease-in),
-              color var(--duration-fast) var(--ease-in);
+              color var(--duration-fast) var(--ease-in), transform 80ms var(--ease-in);
 }
-.vote-btn:hover:not(:disabled) { background: var(--surface-sunken); color: var(--text-primary); }
+.vote-btn:hover:not(:disabled) { background: var(--surface-hover); border-color: var(--border-control); color: var(--text-primary); }
+.vote-btn:active:not(:disabled) { transform: scale(0.94); }
 .vote-btn[aria-pressed="true"] {
-  background: #eaf1fd; border-color: var(--info); color: var(--info);
+  background: #f9e7db; border-color: var(--action); color: var(--action);
 }
-.vote-btn:disabled { opacity: 0.55; cursor: not-allowed; }
-.vote-btn-lg { height: 40px; padding: 0 var(--space-4); font-size: 15px; gap: var(--space-2); }
-@media (pointer: coarse) { .vote-btn, .vote-btn-lg { min-height: 44px; } }
+.vote-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.vote-btn:disabled:active { transform: none; }
+
+.vote-btn-lg {
+  height: 44px; padding: 0 var(--space-4); gap: var(--space-2);
+  font-size: 15px;
+}
+/* Only 28px even on touch, not the usual 44px floor — a 44px pill was blowing up the whole
+   card footer on mobile. The lg variant (detail page's standalone vote panel) keeps the full
+   touch minimum since it isn't fighting for space inside a dense card row. */
+@media (pointer: coarse) { .vote-btn { min-height: 28px; } .vote-btn-lg { min-height: 48px; } }
 
 /* ==========================================================================
    Board
    ========================================================================== */
 
 .board {
-  display: grid; gap: var(--space-3);
+  display: grid; gap: var(--space-2);
   grid-template-columns: 1fr;
 }
-@media (min-width: 768px) { .board { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (min-width: 768px) { .board { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-3); } }
 @media (min-width: 1024px) {
   .board { grid-template-columns: repeat(var(--board-columns, 4), minmax(0, 1fr)); align-items: start; }
 }
 
 /* Below 1024px the same markup reads as a grouped list with sticky headers, which answers
-   "did my thing move?" in one scroll instead of hiding states behind tabs. */
-.board-column { display: flex; flex-direction: column; min-width: 0; }
+   "did my thing move?" in one scroll instead of hiding states behind tabs. The status wash
+   covers the whole column (not just the header) at every breakpoint, so the header itself can
+   stay a thin label rather than a boxed component competing with it for colour. Headers are
+   deliberately tight on mobile — the tap target for collapsing a section stays full-width, so
+   a shallow height still clears accessible touch-target minimums without costing scroll space. */
+.board-column {
+  display: flex; flex-direction: column; min-width: 0;
+  background: var(--col-bg, var(--surface-sunken)); border-radius: var(--radius-md);
+  padding: 6px;
+}
+@media (min-width: 1024px) { .board-column { padding: var(--space-2); } }
+.board-column-backlog     { --col-bg: var(--status-backlog-bg);     --col-text: var(--status-backlog-text); }
+.board-column-in_progress { --col-bg: var(--status-in_progress-bg); --col-text: var(--status-in_progress-text); }
+.board-column-in_review   { --col-bg: var(--status-in_review-bg);   --col-text: var(--status-in_review-text); }
+.board-column-done        { --col-bg: var(--status-done-bg);        --col-text: var(--status-done-text); }
+.board-column-discarded   { --col-bg: var(--status-discarded-bg);   --col-text: var(--status-discarded-text); }
+
 .column-header {
   position: sticky; top: 0; z-index: 2;
-  display: flex; align-items: center; gap: var(--space-2);
-  margin: 0; padding: var(--space-2) var(--space-1);
-  background: var(--canvas);
-  font-size: 13px; font-weight: 600;
+  display: flex; align-items: center; gap: 4px;
+  margin: 0 0 4px; padding: 2px 4px;
+  background: var(--col-bg); color: var(--col-text);
+  font-size: 12px; font-weight: 600;
 }
 @media (min-width: 1024px) {
-  .board-column { background: var(--surface-sunken); border-radius: var(--radius-lg); padding: var(--space-2); }
-  .column-header { position: static; background: transparent; padding: var(--space-2) var(--space-2) var(--space-3); }
+  .column-header { position: static; padding: 4px 2px; margin-bottom: 6px; }
 }
 .column-heading { flex: 1; min-width: 0; font: inherit; }
-.column-title { font-size: 13px; font-weight: 600; color: var(--text-primary); }
+.column-title { font-size: 12px; font-weight: 600; color: inherit; }
+@media (min-width: 1024px) { .column-title { font-size: 12.5px; } }
 .column-count {
-  margin-left: auto; font-family: var(--font-mono); font-size: 12px;
-  color: var(--text-tertiary); font-variant-numeric: tabular-nums; flex-shrink: 0;
+  margin-left: auto; font-family: var(--font-mono); font-size: 10.5px; font-weight: 700;
+  color: inherit; opacity: 0.72; font-variant-numeric: tabular-nums; flex-shrink: 0;
+  background: rgb(255 255 255 / 40%); border-radius: var(--radius-sm); padding: 0 5px;
 }
-.column-chevron { color: var(--text-tertiary); transition: transform var(--duration-fast) var(--ease-in); }
+.column-chevron { color: inherit; opacity: 0.6; transition: transform var(--duration-fast) var(--ease-in); }
 .card-stack { display: flex; flex-direction: column; gap: var(--space-2); min-height: 40px; }
 .column-empty {
   display: grid; place-items: center; min-height: 72px; padding: var(--space-4);
@@ -621,11 +725,14 @@ ul, ol { margin: 0; padding: 0; list-style: none; }
 
 /* --- Collapsible status group header --- */
 .group-toggle {
-  display: flex; align-items: center; gap: var(--space-2); width: 100%;
-  font-size: 13px; font-weight: 600; color: var(--text-primary); text-align: left;
-  min-height: 32px; border-radius: var(--radius-sm);
+  display: flex; align-items: center; gap: 5px; width: 100%;
+  font-size: 12.5px; font-weight: 600; color: inherit; text-align: left;
+  min-height: 24px; border-radius: var(--radius-sm);
 }
-@media (pointer: coarse) { .group-toggle { min-height: 44px; } }
+/* Only 32px even on touch, not the usual 44px floor: the target is already full-width and this
+   is a low-stakes collapse toggle, not a destructive or hard-to-recover action. */
+@media (pointer: coarse) { .group-toggle { min-height: 32px; } }
+@media (min-width: 1024px) { .group-toggle { min-height: 28px; } }
 /* ==========================================================================
    Progress
    ========================================================================== */
@@ -650,26 +757,49 @@ ul, ol { margin: 0; padding: 0; list-style: none; }
    Filter bar
    ========================================================================== */
 
+/* Compact by design: one row of chrome (search + filter trigger + view switch) covers the
+   default, no-filters case. Everything else (type/status/author/visibility/sort/discarded)
+   lives in the Filters sheet, off-canvas, so it never taxes vertical space on mobile. */
 .filter-bar {
-  display: flex; flex-direction: column; gap: var(--space-3);
-  padding: var(--space-3); margin-bottom: var(--space-4);
+  display: flex; align-items: center; gap: var(--space-2);
+  padding: var(--space-2); margin-bottom: var(--space-3);
   background: var(--surface); border: 1px solid var(--border-subtle); border-radius: var(--radius-lg);
 }
-.filter-primary { display: flex; align-items: center; gap: var(--space-2); }
 .search-field { position: relative; flex: 1; min-width: 0; }
-.search-field .input { padding-left: var(--space-8); }
+.search-field .input { height: 38px; min-height: 38px; padding-left: var(--space-8); }
 .search-icon {
   position: absolute; left: var(--space-3); top: 50%; transform: translateY(-50%);
   color: var(--text-tertiary); pointer-events: none; display: grid; place-items: center;
 }
 .search-clear { position: absolute; right: 4px; top: 50%; transform: translateY(-50%); }
+@media (pointer: coarse) { .search-field .input { height: 44px; min-height: 44px; } }
 
-.filter-advanced {
-  display: grid; gap: var(--space-3); grid-template-columns: 1fr;
-  padding-top: var(--space-3); border-top: 1px solid var(--border-subtle);
+.filter-trigger-badge {
+  display: inline-grid; place-items: center; min-width: 16px; height: 16px; padding: 0 4px;
+  border-radius: var(--radius-full); background: rgb(255 255 255 / 30%);
+  font-size: 10px; font-weight: 700;
 }
-@media (min-width: 640px) { .filter-advanced { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
-@media (min-width: 1024px) { .filter-advanced { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+
+/* Result count + removable active-filter pills. Only rendered when there is something to show,
+   so the bar stays a single line the rest of the time. */
+.result-line {
+  display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap;
+  margin: 0 0 var(--space-3); font-size: 12px; color: var(--text-tertiary);
+}
+.result-line-count { flex-shrink: 0; }
+.filter-active-chips { display: flex; flex-wrap: wrap; gap: 6px; flex: 1; min-width: 0; }
+.filter-active-clear { flex-shrink: 0; font-size: 12px; font-weight: 600; color: var(--text-secondary); }
+.filter-active-clear:hover { color: var(--action); text-decoration: underline; }
+
+.chip-removable {
+  cursor: pointer; border: 1px solid transparent;
+  transition: background var(--duration-fast) var(--ease-in), border-color var(--duration-fast) var(--ease-in);
+}
+.chip-removable:hover { background: var(--surface-hover); border-color: var(--border-control); }
+.chip-removable svg:last-child { opacity: 0.7; }
+
+/* --- Filters sheet: sections of chip groups, stacked (the sheet is narrow by design) --- */
+.filter-sections { display: flex; flex-direction: column; gap: var(--space-5); }
 .filter-cell { display: flex; flex-direction: column; gap: var(--space-2); min-width: 0; }
 .filter-cell-label {
   font-size: 11px; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase;
@@ -678,7 +808,7 @@ ul, ol { margin: 0; padding: 0; list-style: none; }
 .filter-chips { display: flex; flex-wrap: wrap; gap: var(--space-1); }
 .filter-chip {
   display: inline-flex; align-items: center; gap: 5px;
-  height: 30px; padding: 0 var(--space-3);
+  height: 32px; padding: 0 var(--space-3);
   border: 1px solid var(--border-control); border-radius: var(--radius-full);
   background: var(--surface); color: var(--text-secondary);
   font-size: 13px; font-weight: 500;
@@ -689,6 +819,11 @@ ul, ol { margin: 0; padding: 0; list-style: none; }
   background: var(--action); border-color: var(--action); color: var(--text-inverse); font-weight: 600;
 }
 @media (pointer: coarse) { .filter-chip { min-height: 44px; } }
+
+.filter-toggle-row {
+  display: flex; align-items: center; gap: var(--space-3);
+  padding: var(--space-2) 0; cursor: pointer; font-size: 14px; color: var(--text-primary);
+}
 
 .toolbar { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
 .toolbar-spacer { margin-left: auto; }
@@ -779,6 +914,10 @@ ul, ol { margin: 0; padding: 0; list-style: none; }
 /* --- Subtasks --- */
 .subtask-list { display: flex; flex-direction: column; gap: 2px; }
 .subtask-row {
+  /* .card-link's invisible ::after overlay is position:absolute + inset:0 and needs a local
+     positioned ancestor to confine it to this row — without this, it anchors to the page root
+     and can swallow clicks anywhere above it (e.g. the "back to board" link at the top). */
+  position: relative;
   display: flex; align-items: center; gap: var(--space-2);
   padding: var(--space-1) var(--space-2); border-radius: var(--radius-md);
   transition: background var(--duration-fast) var(--ease-in);
@@ -792,7 +931,9 @@ ul, ol { margin: 0; padding: 0; list-style: none; }
 .subtask-input:hover { border-color: var(--border-subtle); }
 .subtask-input:focus { background: var(--surface); border-color: var(--border-control); }
 .subtask-done { text-decoration: line-through; color: var(--text-tertiary); }
-.subtask-actions { display: flex; align-items: center; gap: 2px; flex-shrink: 0; }
+/* Sits above the row's card-link overlay so the delete button stays clickable, same as
+   .card-overlay is used elsewhere. */
+.subtask-actions { position: relative; z-index: 1; display: flex; align-items: center; gap: 2px; flex-shrink: 0; }
 .subtask-add { display: flex; align-items: center; gap: var(--space-2); margin-top: var(--space-3); }
 
 /* ==========================================================================

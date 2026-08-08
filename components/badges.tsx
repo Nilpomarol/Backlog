@@ -13,13 +13,34 @@ const typeIcons: Record<ItemType, typeof Bug> = {
   task: Wrench,
 };
 
-export function TypeChip({ type, size = 12 }: { type: ItemType; size?: number }) {
+export function TypeChip({
+  type,
+  size = 12,
+  iconOnly = false,
+}: {
+  type: ItemType;
+  size?: number;
+  /** Renders as a small colour-coded icon badge with no label, for contexts where the title
+   *  should lead — the icon shape alone still separates types, so a tooltip/aria-label carries
+   *  the name for anyone who can't tell from colour and shape (WCAG 1.4.1). */
+  iconOnly?: boolean;
+}) {
   const { language } = useLanguage();
   const Icon = typeIcons[type];
+  const label = typeLabels[language][type];
+
+  if (iconOnly) {
+    return (
+      <span className={`type-badge type-badge-${type}`} role="img" aria-label={label} title={label}>
+        <Icon size={size} aria-hidden="true" />
+      </span>
+    );
+  }
+
   return (
     <span className={`chip chip-${type}`}>
       <Icon size={size} aria-hidden="true" />
-      {typeLabels[language][type]}
+      {label}
     </span>
   );
 }
@@ -39,8 +60,17 @@ export function StatusPill({ status, plural }: { status: ItemStatus; plural?: bo
   );
 }
 
-export function InternalChip() {
+export function InternalChip({ iconOnly = false }: { iconOnly?: boolean } = {}) {
   const { t } = useLanguage();
+
+  if (iconOnly) {
+    return (
+      <span className="internal-badge" role="img" aria-label={t.internal} title={t.internal}>
+        <Lock size={12} aria-hidden="true" />
+      </span>
+    );
+  }
+
   return (
     <span className="chip chip-internal">
       <Lock size={11} aria-hidden="true" />

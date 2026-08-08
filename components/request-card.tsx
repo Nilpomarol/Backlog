@@ -1,22 +1,46 @@
 "use client";
 
-import { CornerDownRight } from "lucide-react";
+import { CornerDownRight, ListChecks } from "lucide-react";
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { classes, formatRelative } from "../lib/format";
 import type { RequestSummary } from "../lib/domain";
-import { AdminChip, InternalChip, StatusPill, TypeChip } from "./badges";
+import { InternalChip, StatusPill, TypeChip } from "./badges";
 import { useAuth, useLanguage } from "./providers";
-import { AppIcon, Avatar, SubtaskProgress } from "./ui/primitives";
+import { AppIcon, Avatar } from "./ui/primitives";
 import { VoteButton } from "./vote-button";
 
-function ParentLinkChip({ request }: { request: RequestSummary }) {
+/** Compact "done/total" indicator folded into the meta line rather than its own row. */
+function SubtaskMeta({ request, label }: { request: RequestSummary; label: string }) {
+  if (request.subtaskCount === 0) return null;
+  return (
+    <>
+      <span className="meta-dot" aria-hidden="true" />
+      <span
+        className={classes(
+          "meta-subtasks",
+          request.completedSubtasks === request.subtaskCount && "meta-subtasks-complete",
+        )}
+        aria-label={`${request.completedSubtasks}/${request.subtaskCount} ${label}`}
+      >
+        <ListChecks size={11} aria-hidden="true" />
+        {request.completedSubtasks}/{request.subtaskCount}
+      </span>
+    </>
+  );
+}
+
+/** Contextual backlink to a parent request. Plain text link, not a chip — it names a specific
+ *  other request rather than categorising this one. */
+function SubtaskOfLink({ request }: { request: RequestSummary }) {
   const { t } = useLanguage();
   if (!request.parentId) return null;
   return (
-    <Link href={`/r/${encodeURIComponent(request.parentId)}`} className="chip chip-neutral">
+    <Link href={`/r/${encodeURIComponent(request.parentId)}`} className="subtask-of-link card-overlay">
       <CornerDownRight size={11} aria-hidden="true" />
-      {t.subtaskOf} {request.parentTitle}
+      <span>
+        {t.subtaskOf} {request.parentTitle}
+      </span>
     </Link>
   );
 }
@@ -27,34 +51,40 @@ function useAuthorLabel() {
   return (request: RequestSummary) => (request.creatorId === profile?.id ? t.you : request.creatorName);
 }
 
-/** Board card. Deliberately limited to the summary fields the specification allows. */
+/**
+ * Board card. The title leads; type and internal-only are quiet icon badges in the top-right
+ * corner rather than labelled chips competing with it for the first read. Everything else (who
+ * created it, whether it's a subtask) is plain text below.
+ */
 export function RequestCard({ request }: { request: RequestSummary }) {
-  const { t } = useLanguage();
+  const { t, language } = useLanguage();
   const authorLabel = useAuthorLabel();
 
   return (
     <article className={classes("request-card", request.status === "discarded" && "request-card-discarded")}>
-      <div className="request-card-flags">
-        <TypeChip type={request.type} />
-        {request.visibility === "internal" && <InternalChip />}
-        {request.creatorRole === "admin" && <AdminChip />}
-        <ParentLinkChip request={request} />
+      <div className="request-card-top">
+        <h3 className="request-card-title">
+          <Link href={`/r/${encodeURIComponent(request.id)}`} className="card-link">
+            {request.title}
+          </Link>
+        </h3>
+        <div className="request-card-badges">
+          <TypeChip type={request.type} iconOnly />
+          {request.visibility === "internal" && <InternalChip iconOnly />}
+        </div>
       </div>
 
-      <h3 className="request-card-title">
-        <Link href={`/r/${encodeURIComponent(request.id)}`} className="card-link">
-          {request.title}
-        </Link>
-      </h3>
-
-      {request.subtaskCount > 0 && (
-        <SubtaskProgress done={request.completedSubtasks} total={request.subtaskCount} label={t.subtasksDone} />
-      )}
+      <SubtaskOfLink request={request} />
 
       <div className="request-card-footer">
-        <span className="request-card-author">
-          <Avatar name={request.creatorName} url={request.creatorAvatarUrl} admin={request.creatorRole === "admin"} />
-          <span>{authorLabel(request)}</span>
+        <Avatar name={request.creatorName} url={request.creatorAvatarUrl} admin={request.creatorRole === "admin"} />
+        <span className="request-card-meta">
+          <span className="request-card-author">{authorLabel(request)}</span>
+          <span className="meta-dot" aria-hidden="true" />
+          <time dateTime={new Date(request.updatedAt).toISOString()}>
+            {formatRelative(request.updatedAt, language)}
+          </time>
+          <SubtaskMeta request={request} label={t.subtasksDone} />
         </span>
         <VoteButton request={request} />
       </div>
@@ -109,8 +139,6 @@ export function RequestRow({
           <TypeChip type={request.type} />
           {showStatus && <StatusPill status={request.status} />}
           {request.visibility === "internal" && <InternalChip />}
-          {request.creatorRole === "admin" && <AdminChip />}
-          <ParentLinkChip request={request} />
         </div>
 
         <h3 className={classes("request-row-title", request.status === "discarded" && "subtask-done")}>
@@ -119,15 +147,14 @@ export function RequestRow({
           </Link>
         </h3>
 
-        {request.subtaskCount > 0 && (
-          <SubtaskProgress done={request.completedSubtasks} total={request.subtaskCount} label={t.subtasksDone} />
-        )}
+        <SubtaskOfLink request={request} />
 
         <div className="meta-row">
           <Avatar name={request.creatorName} url={request.creatorAvatarUrl} admin={request.creatorRole === "admin"} />
           <span>{authorLabel(request)}</span>
           <span className="meta-dot" aria-hidden="true" />
           <time dateTime={new Date(request.updatedAt).toISOString()}>{formatRelative(request.updatedAt, language)}</time>
+          <SubtaskMeta request={request} label={t.subtasksDone} />
         </div>
 
         {actions && <div className="request-row-actions card-overlay">{actions}</div>}

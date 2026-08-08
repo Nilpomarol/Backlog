@@ -11,6 +11,7 @@ import {
   type RefObject,
 } from "react";
 import { classes } from "../../lib/format";
+import { markRouteTransitionEnd } from "../../lib/route-transition";
 import { Button, IconButton } from "./primitives";
 
 const FOCUSABLE =
@@ -65,6 +66,45 @@ function useFocusTrap(container: RefObject<HTMLElement | null>, open: boolean, o
   }, [container, open, onClose]);
 }
 
+/**
+ * Makes a back-press (physical button or mobile swipe gesture) close this overlay instead of
+ * navigating the whole page away — the behaviour people expect from a sheet/dialog. While open,
+ * a same-URL history entry is pushed; popping it (via back) closes the overlay. Closing any
+ * other way (X, backdrop, Escape, confirming an action) pops that entry back off, but only if
+ * nothing else has navigated in the meantime — if the overlay is closing because a real
+ * navigation already happened (e.g. delete-then-redirect), history.state no longer belongs to
+ * us and we leave it alone rather than fight that navigation.
+ */
+function useHistoryBackToClose(open: boolean, onClose: () => void) {
+  const onCloseRef = useRef(onClose);
+  useEffect(() => {
+    onCloseRef.current = onClose;
+  });
+
+  useEffect(() => {
+    if (!open || typeof window === "undefined") return;
+
+    window.history.pushState({ vinextOverlay: true }, "");
+    let consumedByPopstate = false;
+
+    function onPopState() {
+      consumedByPopstate = true;
+      // The resulting same-URL "back" doesn't change the page's content, so the route-transition
+      // indicator (wired to real navigations) would otherwise wait on a commit that never comes.
+      markRouteTransitionEnd();
+      onCloseRef.current();
+    }
+    window.addEventListener("popstate", onPopState);
+
+    return () => {
+      window.removeEventListener("popstate", onPopState);
+      if (!consumedByPopstate && (window.history.state as { vinextOverlay?: boolean } | null)?.vinextOverlay) {
+        window.history.back();
+      }
+    };
+  }, [open]);
+}
+
 // --- Dialog ---------------------------------------------------------------------------------
 
 export function Dialog({
@@ -85,6 +125,7 @@ export function Dialog({
   const ref = useRef<HTMLDivElement>(null);
   const titleId = useId();
   useFocusTrap(ref, open, onClose);
+  useHistoryBackToClose(open, onClose);
   if (!open) return null;
 
   return (
@@ -173,6 +214,7 @@ export function Sheet({
   const ref = useRef<HTMLDivElement>(null);
   const titleId = useId();
   useFocusTrap(ref, open, onClose);
+  useHistoryBackToClose(open, onClose);
   if (!open) return null;
 
   return (

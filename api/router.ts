@@ -35,7 +35,12 @@ const updateItemSchema = z.object({
   description: z.string().trim().max(4000).nullable().optional(),
   type: itemType.optional(),
 }).strict().refine((value) => Object.keys(value).length > 0, "No changes supplied.");
-const createChildSchema = z.object({ title: z.string().trim().min(1).max(160) }).strict();
+const createChildSchema = z.object({
+  title: z.string().trim().min(1).max(160),
+  description: z.string().trim().max(4000).optional().default(""),
+  type: itemType.optional().default("task"),
+  priority: itemPriority.optional().default("none"),
+}).strict();
 const avatarUrl = z.string().trim().url().max(1000).refine((value) => value.startsWith("https://"), "Profile images must use HTTPS.").nullable();
 const appFields = {
   name: z.string().trim().min(2).max(80),
@@ -555,9 +560,9 @@ api.post("/items/:id/children", async (context) => {
   const id = crypto.randomUUID();
   const now = Date.now();
   await client.execute({
-    sql: `INSERT INTO backlog_items (id, app_id, creator_id, title, description, type, status, visibility, parent_id, created_at, updated_at)
-          VALUES (?, ?, ?, ?, NULL, 'task', 'backlog', 'internal', ?, ?, ?)`,
-    args: [id, item.appId, currentUser.id, parsed.data.title, item.id, now, now],
+    sql: `INSERT INTO backlog_items (id, app_id, creator_id, title, description, type, status, priority, visibility, parent_id, created_at, updated_at)
+          VALUES (?, ?, ?, ?, ?, ?, 'backlog', ?, 'internal', ?, ?, ?)`,
+    args: [id, item.appId, currentUser.id, parsed.data.title, parsed.data.description || null, parsed.data.type, parsed.data.priority, item.id, now, now],
   });
   return context.json({ data: { id } }, 201);
 });

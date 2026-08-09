@@ -51,18 +51,5 @@ if (adminEmail) {
   console.log("Schema created. Add ADMIN_EMAIL to .env.local and run this command again to invite the administrator.");
 }
 
-const applicationSeeds = [
-  ["atlas", "Atlas", "Explora països, cultures i el món que t’envolta.", 0],
-  ["homebase", "Homebase", "Organització compartida per a la llar.", 1],
-  ["pocket-recipes", "Pocket Recipes", "Receptes preferides sempre a mà.", 2],
-];
-for (const application of applicationSeeds) {
-  await client.execute({
-    sql: `INSERT INTO apps (id, name, description, sort_order)
-          VALUES (?, ?, ?, ?) ON CONFLICT(id) DO NOTHING`,
-    args: application,
-  });
-}
-
 console.log("Database setup complete.");
 client.close();

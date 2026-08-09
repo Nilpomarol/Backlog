@@ -34,7 +34,7 @@ first-release checks.
 
 ## Database and invitations
 
-Create or update the Turso schema and seed the starter applications with:
+Create or update the Turso schema with:
 
 ```text
 npm run db:setup

@@ -4,8 +4,8 @@ import { ChevronDown, Lightbulb } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState, type FormEvent } from "react";
-import { ITEM_TYPES, type ItemType, type Visibility } from "../../lib/domain";
-import { typeLabels } from "../../lib/i18n";
+import { ITEM_PRIORITIES, ITEM_TYPES, type ItemPriority, type ItemType, type Visibility } from "../../lib/domain";
+import { priorityLabels, typeLabels } from "../../lib/i18n";
 import {
   useAppItems,
   useApps,
@@ -13,10 +13,10 @@ import {
   useErrorMessage,
   useSimilarRequests,
 } from "../../lib/queries";
-import { typeIcons } from "../badges";
+import { priorityIcons, typeIcons } from "../badges";
 import { useAuth, useLanguage } from "../providers";
 import { Button, SegmentedControl, TextAreaField, TextField } from "../ui/primitives";
-import { Sheet } from "../ui/overlay";
+import { Dropdown, Sheet, type DropdownOption } from "../ui/overlay";
 import { useToast } from "../ui/toast";
 import { VoteButton } from "../vote-button";
 
@@ -50,6 +50,7 @@ export function NewRequestSheet({
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [type, setType] = useState<ItemType>("feature");
+  const [priority, setPriority] = useState<ItemPriority>("none");
   const [visibility, setVisibility] = useState<Visibility>(isAdmin ? "internal" : "shared");
   const [touched, setTouched] = useState(false);
   const [detailsOpen, setDetailsOpen] = useState(true);
@@ -79,6 +80,15 @@ export function NewRequestSheet({
   const titleError = touched && trimmedTitle.length < TITLE_MIN ? t.titleTooShort : undefined;
   const descriptionLeft = DESCRIPTION_MAX - description.length;
 
+  const typeOptions: DropdownOption<ItemType>[] = ITEM_TYPES.map((value) => {
+    const Icon = typeIcons[value];
+    return { value, label: typeLabels[language][value], icon: <Icon size={16} aria-hidden="true" /> };
+  });
+  const priorityOptions: DropdownOption<ItemPriority>[] = ITEM_PRIORITIES.map((value) => {
+    const Icon = priorityIcons[value];
+    return { value, label: priorityLabels[language][value], icon: <Icon size={14} aria-hidden="true" /> };
+  });
+
   async function submit(event: FormEvent) {
     event.preventDefault();
     setTouched(true);
@@ -90,6 +100,7 @@ export function NewRequestSheet({
         title: trimmedTitle,
         description: description.trim(),
         type,
+        priority: isAdmin ? priority : "none",
         visibility,
       });
       toast(t.toastCreated);
@@ -162,29 +173,21 @@ export function NewRequestSheet({
           </div>
         )}
 
-        <div className="field" style={{ marginBottom: 0 }}>
+        <div className="field" style={{ marginBottom: isAdmin ? "var(--space-4)" : 0 }}>
           <p className="field-label" id="type-label">
             {t.typeLabel}
           </p>
-          <div className="type-picker" role="radiogroup" aria-labelledby="type-label">
-            {ITEM_TYPES.map((value) => {
-              const Icon = typeIcons[value];
-              return (
-                <button
-                  key={value}
-                  type="button"
-                  role="radio"
-                  aria-checked={type === value}
-                  className={`type-option type-option-${value}`}
-                  onClick={() => setType(value)}
-                >
-                  <Icon size={16} aria-hidden="true" />
-                  {typeLabels[language][value]}
-                </button>
-              );
-            })}
-          </div>
+          <Dropdown<ItemType> label={t.typeLabel} value={type} onChange={setType} options={typeOptions} />
         </div>
+
+        {isAdmin && (
+          <div className="field" style={{ marginBottom: 0 }}>
+            <p className="field-label" id="priority-label">
+              {t.priority}
+            </p>
+            <Dropdown<ItemPriority> label={t.priority} value={priority} onChange={setPriority} options={priorityOptions} />
+          </div>
+        )}
 
         <button
           type="button"

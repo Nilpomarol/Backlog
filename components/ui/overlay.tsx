@@ -1,6 +1,6 @@
 "use client";
 
-import { X } from "lucide-react";
+import { Check, ChevronDown, X } from "lucide-react";
 import {
   useCallback,
   useEffect,
@@ -246,11 +246,15 @@ export function Menu({
   children,
   label,
   align = "down",
+  panelClassName,
 }: {
   trigger: (props: { onClick: () => void; "aria-expanded": boolean; "aria-haspopup": "menu" }) => ReactNode;
   children: (close: () => void) => ReactNode;
   label: string;
   align?: "up" | "down";
+  /** Extra class on the popover panel — lets a form-field dropdown (see Dropdown below) span
+   *  the trigger's width instead of the action-menu default of hugging its right edge. */
+  panelClassName?: string;
 }) {
   const [open, setOpen] = useState(false);
   const anchor = useRef<HTMLDivElement>(null);
@@ -295,11 +299,64 @@ export function Menu({
     <div className="menu-anchor" ref={anchor}>
       {trigger({ onClick: () => setOpen((value) => !value), "aria-expanded": open, "aria-haspopup": "menu" })}
       {open && (
-        <div className={classes("menu", align === "up" && "menu-up")} role="menu" aria-label={label}>
+        <div className={classes("menu", align === "up" && "menu-up", panelClassName)} role="menu" aria-label={label}>
           {children(close)}
         </div>
       )}
     </div>
+  );
+}
+
+// --- Dropdown (single-choice field, styled like a select but with icons) --------------------
+
+export type DropdownOption<T extends string> = { value: T; label: string; icon?: ReactNode };
+
+export function Dropdown<T extends string>({
+  value,
+  options,
+  onChange,
+  label,
+  id,
+}: {
+  value: T;
+  options: DropdownOption<T>[];
+  onChange: (value: T) => void;
+  label: string;
+  id?: string;
+}) {
+  const current = options.find((option) => option.value === value);
+  return (
+    <Menu
+      label={label}
+      panelClassName="dropdown-panel"
+      trigger={(props) => (
+        <button type="button" id={id} className="dropdown-trigger" {...props}>
+          <span className="dropdown-trigger-value">
+            {current?.icon}
+            {current?.label}
+          </span>
+          <ChevronDown size={16} aria-hidden="true" />
+        </button>
+      )}
+    >
+      {(close) => (
+        <>
+          {options.map((option) => (
+            <MenuItem
+              key={option.value}
+              icon={option.icon}
+              onClick={() => {
+                onChange(option.value);
+                close();
+              }}
+            >
+              {option.label}
+              {option.value === value && <Check size={14} aria-hidden="true" className="dropdown-check" />}
+            </MenuItem>
+          ))}
+        </>
+      )}
+    </Menu>
   );
 }
 

@@ -389,10 +389,12 @@ export function useDeleteRequest() {
       return { ...snapshot, id };
     },
     onError: (_error, _id, context) => restoreRequestCaches(client, context?.id ?? "", context),
-    onSuccess: (_data, id) => {
-      client.removeQueries({ queryKey: queryKeys.request(id) });
-      invalidateRequestData(client);
-    },
+    // Deliberately doesn't touch queryKeys.request(id): the deleted item's own detail page is
+    // typically still mounted right here (navigating away on success, see request-detail.tsx),
+    // and removing or invalidating an actively-observed query forces an immediate refetch —
+    // which 404s, flips the page to "not found", and unmounts everything (including the confirm
+    // dialog) before that navigation finishes. Left alone, it's just garbage-collected on unmount.
+    onSuccess: () => invalidateRequestData(client),
   });
 }
 

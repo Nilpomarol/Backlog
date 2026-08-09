@@ -114,7 +114,7 @@ export function RequestCard({
   );
 }
 
-/** Dense row used by the list view, the triage inbox and every cross-app listing. */
+/** Dense row used by the list view and every cross-app listing. */
 export function RequestRow({
   request,
   appLabel,

@@ -1,7 +1,6 @@
 "use client";
 
 import {
-  Inbox,
   LayoutGrid,
   LogIn,
   LogOut,
@@ -19,7 +18,7 @@ import { usePathname, useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import { rememberVisitedUrl } from "../lib/board-return";
 import { LANGUAGES, type Language } from "../lib/i18n";
-import { useAllItems, useApps } from "../lib/queries";
+import { useApps } from "../lib/queries";
 import { isRouteTransitionPending, markRouteTransitionEnd, subscribeRouteTransition } from "../lib/route-transition";
 import { useAuth, useLanguage } from "./providers";
 import { AppIcon, Avatar, Button, SegmentedControl, SkeletonCard } from "./ui/primitives";
@@ -163,14 +162,12 @@ function NavLink({
   href,
   icon,
   label,
-  count,
   active,
   onClick,
 }: {
   href: string;
   icon: ReactNode;
   label: string;
-  count?: number;
   active: boolean;
   onClick?: () => void;
 }) {
@@ -178,7 +175,6 @@ function NavLink({
     <Link href={href} className="nav-item" aria-current={active ? "page" : undefined} onClick={onClick}>
       <span className="nav-item-icon">{icon}</span>
       <span className="nav-item-label">{label}</span>
-      {count !== undefined && count > 0 && <span className="nav-item-count">{count}</span>}
     </Link>
   );
 }
@@ -264,10 +260,6 @@ function ReadyShell({ children }: { children: ReactNode }) {
   }, [pathname, searchParams]);
 
   const { data: apps = [] } = useApps();
-  // Admins get a triage badge. Reusing the unfiltered cross-app query means the overview and
-  // the sidebar share one request instead of issuing two.
-  const { data: crossAppItems = [] } = useAllItems(undefined, { enabled: isAdmin });
-  const untriagedCount = crossAppItems.filter((item) => item.status === "backlog").length;
 
   const currentAppId = pathname.startsWith("/a/") ? decodeURIComponent(pathname.split("/")[2] ?? "") : "";
   const backlogApp = apps.find((app) => app.id === currentAppId) ?? apps[0];
@@ -276,7 +268,6 @@ function ReadyShell({ children }: { children: ReactNode }) {
 
   const isOverview = pathname === "/";
   const isBacklog = pathname.startsWith("/a/") || pathname.startsWith("/r/");
-  const isInbox = pathname === "/inbox";
   const isMine = pathname === "/mine";
   const isSettings = pathname.startsWith("/settings");
 
@@ -298,15 +289,6 @@ function ReadyShell({ children }: { children: ReactNode }) {
 
         <div className="nav-group">
           <NavLink href="/" icon={<SquareStack size={16} aria-hidden="true" />} label={t.overview} active={isOverview} />
-          {isAdmin && (
-            <NavLink
-              href="/inbox"
-              icon={<Inbox size={16} aria-hidden="true" />}
-              label={t.inbox}
-              count={untriagedCount}
-              active={isInbox}
-            />
-          )}
           <NavLink href="/mine" icon={<Star size={16} aria-hidden="true" />} label={t.myRequests} active={isMine} />
         </div>
 
@@ -375,17 +357,10 @@ function ReadyShell({ children }: { children: ReactNode }) {
           </span>
           <span className="sr-only">{t.newRequest}</span>
         </Link>
-        {isAdmin ? (
-          <Link href="/inbox" className="tabbar-item" aria-current={isInbox ? "page" : undefined}>
-            <Inbox size={19} aria-hidden="true" />
-            {t.inbox}
-          </Link>
-        ) : (
-          <Link href="/mine" className="tabbar-item" aria-current={isMine ? "page" : undefined}>
-            <Star size={19} aria-hidden="true" />
-            {t.myRequests}
-          </Link>
-        )}
+        <Link href="/mine" className="tabbar-item" aria-current={isMine ? "page" : undefined}>
+          <Star size={19} aria-hidden="true" />
+          {t.myRequests}
+        </Link>
         <button type="button" className="tabbar-item" onClick={() => setMoreOpen(true)} aria-haspopup="dialog">
           <MenuIcon size={19} aria-hidden="true" />
           {t.more}
@@ -420,14 +395,6 @@ function ReadyShell({ children }: { children: ReactNode }) {
         </div>
 
         <div className="nav-group">
-          {!isAdmin && (
-            <NavLink
-              href="/mine"
-              icon={<Star size={16} aria-hidden="true" />}
-              label={t.myRequests}
-              active={isMine}
-            />
-          )}
           <NavLink
             href="/settings/profile"
             icon={<Settings size={16} aria-hidden="true" />}

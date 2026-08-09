@@ -108,7 +108,7 @@ export function useAppItems(appId: string | undefined) {
   });
 }
 
-/** Requests across every active app. Backs the overview, triage inbox and "my requests". */
+/** Requests across every active app. Backs the overview and "my requests". */
 export function useAllItems(itemStatus?: ItemStatus, options?: { enabled?: boolean }) {
   const { request, status } = useAuth();
   return useQuery({

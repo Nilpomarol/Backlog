@@ -33,7 +33,7 @@ test("server-renders the application shell", async () => {
 });
 
 test("renders the request and settings routes", async () => {
-  for (const pathname of ["/inbox", "/mine", "/settings/profile", "/a/atlas", "/r/example"]) {
+  for (const pathname of ["/mine", "/settings/profile", "/a/atlas", "/r/example"]) {
     const response = await render(pathname);
     assert.equal(response.status, 200, `${pathname} should render`);
     const html = await response.text();

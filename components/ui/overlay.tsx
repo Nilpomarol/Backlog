@@ -22,6 +22,14 @@ const FOCUSABLE =
  * before the overlay opened.
  */
 function useFocusTrap(container: RefObject<HTMLElement | null>, open: boolean, onClose: () => void) {
+  // onClose is a fresh closure on every render of the caller (e.g. it closes over form state
+  // that changes on each keystroke). Reading it via a ref keeps the effect below from re-running
+  // — and re-stealing focus to the first focusable element — on every parent re-render.
+  const onCloseRef = useRef(onClose);
+  useEffect(() => {
+    onCloseRef.current = onClose;
+  });
+
   useEffect(() => {
     if (!open) return;
     const previous = document.activeElement as HTMLElement | null;
@@ -35,7 +43,7 @@ function useFocusTrap(container: RefObject<HTMLElement | null>, open: boolean, o
     function onKeyDown(event: KeyboardEvent) {
       if (event.key === "Escape") {
         event.stopPropagation();
-        onClose();
+        onCloseRef.current();
         return;
       }
       if (event.key !== "Tab") return;
@@ -63,7 +71,7 @@ function useFocusTrap(container: RefObject<HTMLElement | null>, open: boolean, o
       document.body.style.overflow = overflow;
       previous?.focus?.();
     };
-  }, [container, open, onClose]);
+  }, [container, open]);
 }
 
 /**

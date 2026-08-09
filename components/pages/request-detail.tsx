@@ -486,6 +486,10 @@ export function RequestDetailPage({ requestId }: { requestId: string }) {
             onError,
             onSuccess: () => {
               toast(t.toastDeleted);
+              // Not boardHref: deleting can cascade-delete subtasks (see db/schema.ts), so
+              // "wherever you came from" may itself be a request that no longer exists —
+              // e.g. you reached this parent via a child's breadcrumb, then deleted the parent.
+              // The board is always a valid destination.
               router.push(`/a/${encodeURIComponent(request.appId)}`);
             },
           })

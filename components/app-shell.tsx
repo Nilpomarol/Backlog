@@ -261,7 +261,7 @@ function ReadyShell({ children }: { children: ReactNode }) {
   const currentAppId = pathname.startsWith("/a/") ? decodeURIComponent(pathname.split("/")[2] ?? "") : "";
   const backlogApp = apps.find((app) => app.id === currentAppId) ?? apps[0];
   const backlogHref = backlogApp ? `/a/${encodeURIComponent(backlogApp.id)}` : "/";
-  const createHref = backlogApp ? `/a/${encodeURIComponent(backlogApp.id)}/new` : "/";
+  const createHref = backlogApp ? `/a/${encodeURIComponent(backlogApp.id)}?new=1` : "/";
 
   const isOverview = pathname === "/";
   const isBacklog = pathname.startsWith("/a/") || pathname.startsWith("/r/");

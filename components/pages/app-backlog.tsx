@@ -688,7 +688,8 @@ export function AppBacklogPage({ appId }: { appId: string }) {
               />
             )
           ) : filters.view === "list" ? (
-            <>
+            // Bulk selection is a desktop-width affordance only — see .list-view in globals.css.
+            <div className="list-view">
               <div className="request-list">
                 {visible.map((item) => (
                   <RequestRow
@@ -711,7 +712,7 @@ export function AppBacklogPage({ appId }: { appId: string }) {
               {activeSelection.length > 0 && (
                 <BulkBar ids={activeSelection} onDone={() => setSelected([])} clearLabel={t.clearSelection} />
               )}
-            </>
+            </div>
           ) : (
             <div className="board" style={{ ["--board-columns" as string]: columns.length }}>
               {columns.map((status) => {

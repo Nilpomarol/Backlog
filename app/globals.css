@@ -702,6 +702,13 @@ ul, ol { margin: 0; padding: 0; list-style: none; }
 .request-row-side { display: flex; align-items: center; gap: var(--space-2); flex-shrink: 0; }
 .request-list { display: flex; flex-direction: column; gap: var(--space-2); }
 
+/* Bulk selection needs room for a row of buttons plus the checkbox column, so it's a
+   desktop-width affordance only — narrower than that, hide the checkboxes and the bar itself. */
+@media (max-width: 767px) {
+  .list-view .request-row > input.checkbox { display: none; }
+  .list-view .bulk-bar { display: none; }
+}
+
 /* ==========================================================================
    Vote button
    ========================================================================== */

@@ -48,7 +48,7 @@ function AppBoard({ app, items }: { app: Application; items: RequestSummary[] })
       <div className="app-board-header">
         <Link href={href} className="app-board-title-group">
           <AppIcon name={app.name} logoUrl={app.logoUrl} className="page-app-icon" />
-          <span style={{ minWidth: 0 }}>
+          <span className="app-board-title-text">
             <span className="app-board-name">{app.name}</span>
             <span className="app-board-stat">
               {app.activeItemCount} {t.activeShort}

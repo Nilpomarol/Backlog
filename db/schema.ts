@@ -52,6 +52,7 @@ export const backlogItems = sqliteTable("backlog_items", {
   type: text("type", { enum: ["bug", "feature", "improvement", "task"] }).notNull(),
   status: text("status", { enum: ["backlog", "in_progress", "in_review", "done", "discarded"] }).notNull().default("backlog"),
   priority: text("priority", { enum: ["urgent", "high", "medium", "low", "none"] }).notNull().default("none"),
+  effort: text("effort", { enum: ["small", "medium", "large", "unknown"] }).notNull().default("unknown"),
   visibility: text("visibility", { enum: ["shared", "internal"] }).notNull().default("shared"),
   createdAt: timestamp("created_at"),
   updatedAt: timestamp("updated_at"),
@@ -64,6 +65,7 @@ export const backlogItems = sqliteTable("backlog_items", {
   check("backlog_items_type_check", sql`${table.type} in ('bug', 'feature', 'improvement', 'task')`),
   check("backlog_items_status_check", sql`${table.status} in ('backlog', 'in_progress', 'in_review', 'done', 'discarded')`),
   check("backlog_items_priority_check", sql`${table.priority} in ('urgent', 'high', 'medium', 'low', 'none')`),
+  check("backlog_items_effort_check", sql`${table.effort} in ('small', 'medium', 'large', 'unknown')`),
   check("backlog_items_visibility_check", sql`${table.visibility} in ('shared', 'internal')`),
 ]);
 

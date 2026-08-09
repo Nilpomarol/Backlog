@@ -37,7 +37,7 @@ import {
   useSetVisibility,
   useUpdateRequest,
 } from "../../lib/queries";
-import { AdminChip, InternalChip, PriorityChip, StatusDot, StatusPill, TypeChip, priorityIcons, usePriorityLabel } from "../badges";
+import { AdminChip, EffortChip, InternalChip, PriorityChip, StatusDot, StatusPill, TypeChip, priorityIcons, usePriorityLabel } from "../badges";
 import { ChildCardList } from "../child-cards";
 import { useAuth, useLanguage } from "../providers";
 import { Avatar, Button, SkeletonList } from "../ui/primitives";
@@ -189,6 +189,7 @@ export function RequestDetailPage({ requestId }: { requestId: string }) {
           <TypeChip type={request.type} />
           <StatusPill status={request.status} />
           <PriorityChip priority={request.priority} />
+          {request.effort !== "unknown" && <EffortChip effort={request.effort} />}
           {request.visibility === "internal" && <InternalChip />}
           {request.creatorRole === "admin" && <AdminChip />}
 

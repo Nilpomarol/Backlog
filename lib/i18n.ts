@@ -1,4 +1,4 @@
-import type { ItemPriority, ItemStatus, ItemType } from "./domain";
+import type { ItemEffort, ItemPriority, ItemStatus, ItemType } from "./domain";
 
 export type Language = "ca" | "en";
 export const LANGUAGES: Language[] = ["ca", "en"];
@@ -79,6 +79,7 @@ const ca = {
   type: "Tipus",
   status: "Estat",
   priority: "Prioritat",
+  effort: "Esforç d'implementació",
   noRequests: "Encara no hi ha propostes",
   noRequestsBody: "Sigues la primera persona a explicar què es podria millorar.",
   noMatches: "Cap proposta coincideix amb els filtres",
@@ -357,6 +358,7 @@ const en: Dictionary = {
   type: "Type",
   status: "Status",
   priority: "Priority",
+  effort: "Implementation effort",
   noRequests: "No requests yet",
   noRequestsBody: "Be the first to say what could be better.",
   noMatches: "No requests match these filters",
@@ -606,6 +608,11 @@ export const typeLabels: Record<Language, Record<ItemType, string>> = {
 export const priorityLabels: Record<Language, Record<ItemPriority, string>> = {
   ca: { urgent: "Urgent", high: "Alta", medium: "Mitjana", low: "Baixa", none: "Sense prioritat" },
   en: { urgent: "Urgent", high: "High", medium: "Medium", low: "Low", none: "No priority" },
+};
+
+export const effortLabels: Record<Language, Record<ItemEffort, string>> = {
+  ca: { small: "Petit", medium: "Mitjà", large: "Gran", unknown: "Sense estimar" },
+  en: { small: "Small", medium: "Medium", large: "Large", unknown: "Not estimated" },
 };
 
 export const localeFor: Record<Language, string> = { ca: "ca-ES", en: "en-GB" };

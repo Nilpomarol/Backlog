@@ -15,6 +15,7 @@ import {
 } from "./api";
 import type {
   Application,
+  ItemEffort,
   ItemPriority,
   ItemStatus,
   ItemType,
@@ -278,6 +279,7 @@ export function useCreateRequest() {
       description: string;
       type: ItemType;
       priority: ItemPriority;
+      effort: ItemEffort;
       visibility: Visibility;
     }) => {
       const payload = await request<Envelope<{ id: string }>>("/items", {

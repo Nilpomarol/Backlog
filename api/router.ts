@@ -21,6 +21,7 @@ export const api = new Hono<{ Bindings: ApiEnvironment; Variables: Variables }>(
 const itemType = z.enum(["bug", "feature", "improvement", "task"]);
 const itemStatus = z.enum(["backlog", "in_progress", "in_review", "done", "discarded"]);
 const itemPriority = z.enum(["urgent", "high", "medium", "low", "none"]);
+const itemEffort = z.enum(["small", "medium", "large", "unknown"]);
 const itemVisibility = z.enum(["shared", "internal"]);
 const createItemSchema = z.object({
   appId: z.string().min(1).max(80),
@@ -28,6 +29,7 @@ const createItemSchema = z.object({
   description: z.string().trim().max(4000).optional().default(""),
   type: itemType,
   priority: itemPriority.optional().default("none"),
+  effort: itemEffort.optional().default("unknown"),
   visibility: itemVisibility.optional().default("shared"),
 });
 const updateItemSchema = z.object({
@@ -347,7 +349,7 @@ api.get("/apps/:appId/items", async (context) => {
   if (!(await canAccessApp(client, currentUser, context.req.param("appId")))) return context.json({ error: { code: "not_found", message: "Application not found." } }, 404);
   const result = await client.execute({
     sql: `SELECT b.id, b.app_id AS appId, b.creator_id AS creatorId, b.title, b.description,
-            b.type, b.status, b.priority, b.visibility, b.parent_id AS parentId, p.title AS parentTitle,
+            b.type, b.status, b.priority, b.effort, b.visibility, b.parent_id AS parentId, p.title AS parentTitle,
             b.created_at AS createdAt, b.updated_at AS updatedAt,
             u.name AS creatorName, u.avatar_url AS creatorAvatarUrl, u.role AS creatorRole,
             COUNT(DISTINCT v.user_id) AS votes,
@@ -397,7 +399,7 @@ api.get("/items", async (context) => {
   const client = getClient(context.env);
   const result = await client.execute({
     sql: `SELECT b.id, b.app_id AS appId, b.creator_id AS creatorId, b.title, b.description,
-            b.type, b.status, b.priority, b.visibility, b.parent_id AS parentId, p.title AS parentTitle,
+            b.type, b.status, b.priority, b.effort, b.visibility, b.parent_id AS parentId, p.title AS parentTitle,
             b.created_at AS createdAt, b.updated_at AS updatedAt,
             a.name AS appName, a.logo_url AS appLogoUrl,
             u.name AS creatorName, u.avatar_url AS creatorAvatarUrl, u.role AS creatorRole,
@@ -426,7 +428,7 @@ api.get("/items/:id", async (context) => {
   const item = await findItem(client, context.req.param("id"));
   if (!item || !canReadItem(currentUser, item, await canAccessApp(client, currentUser, item.appId))) return context.json({ error: { code: "not_found", message: "Request not found." } }, 404);
   const detail = await client.execute({
-    sql: `SELECT b.id, b.app_id AS appId, b.creator_id AS creatorId, b.title, b.description, b.type, b.status, b.priority, b.visibility,
+    sql: `SELECT b.id, b.app_id AS appId, b.creator_id AS creatorId, b.title, b.description, b.type, b.status, b.priority, b.effort, b.visibility,
             b.parent_id AS parentId, p.title AS parentTitle,
             b.created_at AS createdAt, b.updated_at AS updatedAt, u.name AS creatorName, u.avatar_url AS creatorAvatarUrl, u.role AS creatorRole,
             COUNT(v.user_id) AS votes, MAX(CASE WHEN v.user_id = ? THEN 1 ELSE 0 END) AS voted
@@ -435,7 +437,7 @@ api.get("/items/:id", async (context) => {
     args: [currentUser.id, item.id],
   });
   const children = await client.execute({
-    sql: `SELECT c.id, c.app_id AS appId, c.creator_id AS creatorId, c.title, c.description, c.type, c.status, c.priority, c.visibility,
+    sql: `SELECT c.id, c.app_id AS appId, c.creator_id AS creatorId, c.title, c.description, c.type, c.status, c.priority, c.effort, c.visibility,
             c.parent_id AS parentId, c.created_at AS createdAt, c.updated_at AS updatedAt,
             u.name AS creatorName, u.avatar_url AS creatorAvatarUrl, u.role AS creatorRole,
             COUNT(DISTINCT v.user_id) AS votes, MAX(CASE WHEN v.user_id = ? THEN 1 ELSE 0 END) AS voted,
@@ -453,15 +455,16 @@ api.post("/items", async (context) => {
   const currentUser = context.get("user");
   if (parsed.data.visibility === "internal" && currentUser.role !== "admin") return context.json({ error: { code: "forbidden", message: "Only administrators can create internal requests." } }, 403);
   if (parsed.data.priority !== "none" && currentUser.role !== "admin") return context.json({ error: { code: "forbidden", message: "Only administrators can set priority." } }, 403);
+  if (parsed.data.effort !== "unknown" && currentUser.role !== "admin") return context.json({ error: { code: "forbidden", message: "Only administrators can set implementation effort." } }, 403);
 
   const client = getClient(context.env);
   if (!(await canAccessApp(client, currentUser, parsed.data.appId))) return context.json({ error: { code: "forbidden", message: "You do not have access to this application." } }, 403);
   const id = crypto.randomUUID();
   const now = Date.now();
   await client.execute({
-    sql: `INSERT INTO backlog_items (id, app_id, creator_id, title, description, type, status, priority, visibility, created_at, updated_at)
-          VALUES (?, ?, ?, ?, ?, ?, 'backlog', ?, ?, ?, ?)`,
-    args: [id, parsed.data.appId, currentUser.id, parsed.data.title, parsed.data.description || null, parsed.data.type, parsed.data.priority, parsed.data.visibility, now, now],
+    sql: `INSERT INTO backlog_items (id, app_id, creator_id, title, description, type, status, priority, effort, visibility, created_at, updated_at)
+          VALUES (?, ?, ?, ?, ?, ?, 'backlog', ?, ?, ?, ?, ?)`,
+    args: [id, parsed.data.appId, currentUser.id, parsed.data.title, parsed.data.description || null, parsed.data.type, parsed.data.priority, parsed.data.effort, parsed.data.visibility, now, now],
   });
   return context.json({ data: { id } }, 201);
 });

@@ -521,14 +521,18 @@ ul, ol { margin: 0; padding: 0; list-style: none; }
   border-color: var(--type-task-solid); background: var(--type-task-bg); color: var(--type-task-text);
 }
 
-/* --- New-request form: everything essential fits in one card; optional fields collapse away
-   so the common "type a title, hit go" mobile flow never requires scrolling. --- */
-.new-request-card {
-  background: var(--surface); border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-lg); padding: var(--space-5);
-  box-shadow: var(--shadow-sm);
-}
-.new-request-card .field:last-child { margin-bottom: 0; }
+/* --- New-request form: optional fields collapse away so the common "type a title, hit go"
+   mobile flow never requires scrolling. Spacing between top-level fields comes from the flex
+   gap below, not from .field's own margin-bottom — .field still owns that margin wherever it
+   isn't a flex child of this form (e.g. stacked inside .disclosure-body). --- */
+.new-request-form { display: flex; flex-direction: column; gap: var(--space-4); }
+.new-request-form > .field { margin-bottom: 0; }
+/* .disclosure-trigger/.disclosure-body are shared with the subtask-add form (child-cards.tsx),
+   whose parent stacks by margin, not gap — so their own margin-top must stay for that context.
+   Here it would double up on top of the flex gap above, so cancel just the trigger's; the body
+   keeps a small one to stay visually grouped with the trigger it belongs to. */
+.new-request-form .disclosure-trigger { margin-top: 0; }
+.new-request-form .disclosure-body { margin-top: var(--space-2); }
 
 .disclosure-trigger {
   display: flex; align-items: center; gap: var(--space-2); width: 100%;
@@ -543,6 +547,16 @@ ul, ol { margin: 0; padding: 0; list-style: none; }
 .disclosure-body { margin-top: var(--space-4); }
 .disclosure-body .field:last-child { margin-bottom: 0; }
 @media (pointer: coarse) { .disclosure-trigger { min-height: 44px; } }
+
+/* Below 768px the sheet is a bottom sheet competing with the keyboard for vertical space, so
+   tighten every gap this form controls — the field label/control gap stays put, it's already
+   tight. */
+@media (max-width: 767px) {
+  .new-request-form { gap: var(--space-3); }
+  .new-request-form .disclosure-body { margin-top: 0; }
+  .new-request-form .disclosure-body .field { margin-bottom: var(--space-3); }
+  .new-request-form .disclosure-trigger { padding-top: var(--space-2); }
+}
 
 .form-actions { display: flex; align-items: center; justify-content: flex-end; gap: var(--space-2); margin-top: var(--space-6); }
 @media (max-width: 639px) {

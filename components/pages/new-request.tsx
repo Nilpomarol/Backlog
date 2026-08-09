@@ -129,12 +129,7 @@ export function NewRequestSheet({
         </>
       }
     >
-      <form
-        id="new-request-form"
-        onSubmit={submit}
-        noValidate
-        style={{ display: "flex", flexDirection: "column", gap: "var(--space-4)" }}
-      >
+      <form id="new-request-form" className="new-request-form" onSubmit={submit} noValidate>
         <TextField
           label={t.titleLabel}
           value={title}
@@ -173,7 +168,7 @@ export function NewRequestSheet({
           </div>
         )}
 
-        <div className="field" style={{ marginBottom: isAdmin ? "var(--space-4)" : 0 }}>
+        <div className="field">
           <p className="field-label" id="type-label">
             {t.typeLabel}
           </p>
@@ -181,7 +176,7 @@ export function NewRequestSheet({
         </div>
 
         {isAdmin && (
-          <div className="field" style={{ marginBottom: 0 }}>
+          <div className="field">
             <p className="field-label" id="priority-label">
               {t.priority}
             </p>
@@ -189,18 +184,22 @@ export function NewRequestSheet({
           </div>
         )}
 
-        <button
-          type="button"
-          className="disclosure-trigger"
-          aria-expanded={detailsOpen}
-          aria-controls="new-request-details"
-          onClick={() => setDetailsOpen((value) => !value)}
-        >
-          <ChevronDown size={16} aria-hidden="true" />
-          {detailsOpen ? t.hideDetails : t.addDetails}
-        </button>
+        {/* Admins triage every field on this form, so there's nothing to hide — only members
+            get the collapsible, to keep their much shorter common case to one glance. */}
+        {!isAdmin && (
+          <button
+            type="button"
+            className="disclosure-trigger"
+            aria-expanded={detailsOpen}
+            aria-controls="new-request-details"
+            onClick={() => setDetailsOpen((value) => !value)}
+          >
+            <ChevronDown size={16} aria-hidden="true" />
+            {detailsOpen ? t.hideDetails : t.addDetails}
+          </button>
+        )}
 
-        {detailsOpen && (
+        {(isAdmin || detailsOpen) && (
           <div className="disclosure-body" id="new-request-details" style={{ paddingTop: 0 }}>
             <TextAreaField
               label={t.descriptionLabel}

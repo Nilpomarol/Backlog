@@ -122,7 +122,6 @@ export function OverviewPage() {
     return map;
   }, [items]);
 
-  const untriagedCount = list.filter((item) => item.status === "backlog").length;
   const mineOpenCount = list.filter(
     (item) => item.creatorId === profile?.id && ACTIVE_STATUSES.includes(item.status),
   ).length;
@@ -152,25 +151,15 @@ export function OverviewPage() {
         <SkeletonList count={4} label={t.loading} />
       ) : (
         <>
-          {isAdmin
-            ? untriagedCount > 0 && (
-                <Link href="/inbox" className="overview-banner">
-                  <span className="overview-banner-icon">
-                    <Inbox size={16} aria-hidden="true" />
-                  </span>
-                  <span className="overview-banner-text">{t.triageNeeded(untriagedCount)}</span>
-                  <ArrowRight size={16} aria-hidden="true" />
-                </Link>
-              )
-            : mineOpenCount > 0 && (
-                <Link href="/mine" className="overview-banner">
-                  <span className="overview-banner-icon">
-                    <Star size={16} aria-hidden="true" />
-                  </span>
-                  <span className="overview-banner-text">{t.openRequestsBanner(mineOpenCount)}</span>
-                  <ArrowRight size={16} aria-hidden="true" />
-                </Link>
-              )}
+          {mineOpenCount > 0 && (
+            <Link href="/mine" className="overview-banner">
+              <span className="overview-banner-icon">
+                <Star size={16} aria-hidden="true" />
+              </span>
+              <span className="overview-banner-text">{t.openRequestsBanner(mineOpenCount)}</span>
+              <ArrowRight size={16} aria-hidden="true" />
+            </Link>
+          )}
 
           {(apps ?? []).length === 0 ? (
             <EmptyState

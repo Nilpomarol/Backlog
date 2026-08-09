@@ -15,7 +15,6 @@ const ca = {
   skipToContent: "Vés al contingut",
   primaryNavigation: "Navegació principal",
   overview: "Resum",
-  inbox: "Per triar",
   myRequests: "Les meves",
   apps: "Aplicacions",
   settings: "Configuració",
@@ -41,10 +40,7 @@ const ca = {
   // Overview
   overviewTitle: "Resum",
   overviewGreeting: (name: string) => `Hola, ${name}`,
-  triageNeeded: (n: number) => (n === 1 ? "1 proposta espera una decisió." : `${n} propostes esperen una decisió.`),
   openRequestsBanner: (n: number) => (n === 1 ? "Tens 1 proposta oberta." : `Tens ${n} propostes obertes.`),
-  nothingToTriage: "Res per decidir",
-  nothingToTriageBody: "Has classificat totes les propostes. Bona feina.",
   noOpenRequests: "Encara no has proposat res",
   noOpenRequestsBody: "Quan trobis un error o se t’acudeixi una millora, explica-la aquí.",
   viewAll: "Ho vull veure tot",
@@ -175,9 +171,6 @@ const ca = {
   openInstead: "Obre",
   charactersLeft: (n: number) => `Queden ${n} caràcters`,
 
-  // Inbox
-  inboxTitle: "Per decidir",
-  inboxSubtitle: "Propostes noves de totes les aplicacions, les més votades primer.",
   start: "Comença-la",
   discard: "Descarta",
   selectRequest: "Selecciona la proposta",
@@ -313,7 +306,6 @@ const en: Dictionary = {
   skipToContent: "Skip to content",
   primaryNavigation: "Primary navigation",
   overview: "Overview",
-  inbox: "Triage",
   myRequests: "Mine",
   apps: "Apps",
   settings: "Settings",
@@ -337,10 +329,7 @@ const en: Dictionary = {
 
   overviewTitle: "Overview",
   overviewGreeting: (name: string) => `Hi, ${name}`,
-  triageNeeded: (n: number) => (n === 1 ? "1 request is waiting on a decision." : `${n} requests are waiting on a decision.`),
   openRequestsBanner: (n: number) => (n === 1 ? "You have 1 open request." : `You have ${n} open requests.`),
-  nothingToTriage: "Nothing to triage",
-  nothingToTriageBody: "Every request has been sorted. Nice work.",
   noOpenRequests: "You haven’t reported anything yet",
   noOpenRequestsBody: "When something breaks or you think of an improvement, describe it here.",
   viewAll: "See everything",
@@ -468,8 +457,6 @@ const en: Dictionary = {
   openInstead: "Open",
   charactersLeft: (n: number) => `${n} characters left`,
 
-  inboxTitle: "Needs a decision",
-  inboxSubtitle: "New requests across every app, most voted first.",
   start: "Start it",
   discard: "Discard",
   selectRequest: "Select request",

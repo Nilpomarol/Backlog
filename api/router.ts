@@ -391,7 +391,7 @@ api.get("/apps/:appId/items/similar", async (context) => {
 
 /**
  * Permitted requests across every active application. Backs the cross-app views (overview,
- * triage inbox, "my requests") which would otherwise need one call per application.
+ * "my requests") which would otherwise need one call per application.
  */
 api.get("/items", async (context) => {
   const currentUser = context.get("user");

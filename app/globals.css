@@ -654,7 +654,7 @@ ul, ol { margin: 0; padding: 0; list-style: none; }
 .avatar-admin { border-color: var(--border-control); }
 
 /* ==========================================================================
-   Request card (board) and row (list / inbox)
+   Request card (board) and row (list)
    ========================================================================== */
 
 .request-card {

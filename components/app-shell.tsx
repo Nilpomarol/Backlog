@@ -256,7 +256,14 @@ function ReadyShell({ children }: { children: ReactNode }) {
   const { data: crossAppItems = [] } = useAllItems(undefined, { enabled: isAdmin });
   const untriagedCount = crossAppItems.filter((item) => item.status === "backlog").length;
 
-  const closeMore = () => setMoreOpen(false);
+  // Closing the sheet from a Link's onClick would race the navigation itself: vinext resolves
+  // Link clicks through several async hops before it calls history.pushState (see lib/route-
+  // transition.ts), but the sheet's own history entry (from useHistoryBackToClose in overlay.tsx)
+  // would already be popped by the time React commits the synchronous onClick — cancelling the
+  // in-flight navigation. Closing in reaction to the pathname actually changing sidesteps the race.
+  useEffect(() => {
+    setMoreOpen(false);
+  }, [pathname]);
 
   const currentAppId = pathname.startsWith("/a/") ? decodeURIComponent(pathname.split("/")[2] ?? "") : "";
   const backlogApp = apps.find((app) => app.id === currentAppId) ?? apps[0];
@@ -400,7 +407,6 @@ function ReadyShell({ children }: { children: ReactNode }) {
               href={`/a/${encodeURIComponent(app.id)}`}
               className="nav-item"
               aria-current={currentAppId === app.id ? "page" : undefined}
-              onClick={closeMore}
             >
               <AppIcon name={app.name} logoUrl={app.logoUrl} className="nav-app-icon" />
               <span className="nav-item-label">{app.name}</span>
@@ -416,7 +422,6 @@ function ReadyShell({ children }: { children: ReactNode }) {
               icon={<Star size={16} aria-hidden="true" />}
               label={t.myRequests}
               active={isMine}
-              onClick={closeMore}
             />
           )}
           <NavLink
@@ -424,7 +429,6 @@ function ReadyShell({ children }: { children: ReactNode }) {
             icon={<Settings size={16} aria-hidden="true" />}
             label={t.settings}
             active={isSettings}
-            onClick={closeMore}
           />
         </div>
 

@@ -38,6 +38,11 @@ function AppBoard({ app, items }: { app: Application; items: RequestSummary[] })
   const { language } = useLanguage();
   const href = `/a/${encodeURIComponent(app.id)}`;
 
+  const columns = BOARD_STATUSES.map((status) => ({
+    status,
+    items: items.filter((item) => item.status === status).sort(byVotes),
+  })).filter((column) => column.items.length > 0);
+
   return (
     <section className="app-board">
       <div className="app-board-header">
@@ -45,13 +50,9 @@ function AppBoard({ app, items }: { app: Application; items: RequestSummary[] })
           <AppIcon name={app.name} logoUrl={app.logoUrl} className="page-app-icon" />
           <span style={{ minWidth: 0 }}>
             <span className="app-board-name">{app.name}</span>
-            {app.description ? (
-              <span className="app-board-desc">{app.description}</span>
-            ) : (
-              <span className="app-board-stat">
-                {app.activeItemCount} {t.activeShort}
-              </span>
-            )}
+            <span className="app-board-stat">
+              {app.activeItemCount} {t.activeShort}
+            </span>
           </span>
         </Link>
         <div className="app-board-actions">
@@ -74,37 +75,28 @@ function AppBoard({ app, items }: { app: Application; items: RequestSummary[] })
           </Link>
         </div>
       ) : (
-        <div className="board" style={{ ["--board-columns" as string]: BOARD_STATUSES.length }}>
-          {BOARD_STATUSES.map((status) => {
-            const columnItems = items.filter((item) => item.status === status).sort(byVotes);
-            return (
-              <section className={`board-column board-column-${status}`} key={status}>
-                <div className="column-header">
-                  <StatusDot status={status} />
-                  <span className="column-heading">
-                    <span className="column-title">{statusLabels[language][status]}</span>
-                  </span>
-                  <span className="column-count">{columnItems.length}</span>
-                </div>
-                <div className="card-stack">
-                  {columnItems.length === 0 ? (
-                    <div className="column-empty">{t.columnEmpty}</div>
-                  ) : (
-                    <>
-                      {columnItems.slice(0, MAX_PER_COLUMN).map((item) => (
-                        <MiniCard key={item.id} request={item} />
-                      ))}
-                      {columnItems.length > MAX_PER_COLUMN && (
-                        <Link href={href} className="mini-card-more">
-                          {t.moreCount(columnItems.length - MAX_PER_COLUMN)}
-                        </Link>
-                      )}
-                    </>
-                  )}
-                </div>
-              </section>
-            );
-          })}
+        <div className="board" style={{ ["--board-columns" as string]: columns.length }}>
+          {columns.map(({ status, items: columnItems }) => (
+            <section className={`board-column board-column-${status}`} key={status}>
+              <div className="column-header">
+                <StatusDot status={status} />
+                <span className="column-heading">
+                  <span className="column-title">{statusLabels[language][status]}</span>
+                </span>
+                <span className="column-count">{columnItems.length}</span>
+              </div>
+              <div className="card-stack">
+                {columnItems.slice(0, MAX_PER_COLUMN).map((item) => (
+                  <MiniCard key={item.id} request={item} />
+                ))}
+                {columnItems.length > MAX_PER_COLUMN && (
+                  <Link href={href} className="mini-card-more">
+                    {t.moreCount(columnItems.length - MAX_PER_COLUMN)}
+                  </Link>
+                )}
+              </div>
+            </section>
+          ))}
         </div>
       )}
     </section>

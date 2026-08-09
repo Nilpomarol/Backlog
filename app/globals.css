@@ -1048,10 +1048,6 @@ ul, ol { margin: 0; padding: 0; list-style: none; }
 }
 .app-board-title-group { flex: 1; min-width: 0; display: flex; align-items: center; gap: var(--space-3); }
 .app-board-name { font-size: 17px; font-weight: 600; letter-spacing: -0.01em; }
-.app-board-desc {
-  font-size: 13px; color: var(--text-secondary); margin-top: 1px;
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-}
 .app-board-stat { font-family: var(--font-mono); font-size: 12px; color: var(--text-tertiary); margin-top: 1px; }
 .app-board-actions { display: flex; align-items: center; gap: var(--space-2); flex-shrink: 0; }
 

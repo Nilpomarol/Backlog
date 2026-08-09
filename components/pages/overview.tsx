@@ -151,7 +151,7 @@ export function OverviewPage() {
         <SkeletonList count={4} label={t.loading} />
       ) : (
         <>
-          {mineOpenCount > 0 && (
+          {!isAdmin && mineOpenCount > 0 && (
             <Link href="/mine" className="overview-banner">
               <span className="overview-banner-icon">
                 <Star size={16} aria-hidden="true" />

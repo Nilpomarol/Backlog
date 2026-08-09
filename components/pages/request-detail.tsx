@@ -217,7 +217,7 @@ export function RequestDetailPage({ requestId }: { requestId: string }) {
                         {t.moveToApp}
                       </MenuItem>
                     )}
-                    {mayWorkflow && !request.parentId && (
+                    {mayWorkflow && (
                       <MenuItem
                         icon={
                           request.visibility === "internal" ? (

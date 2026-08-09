@@ -1,5 +1,6 @@
 import type {
   Application,
+  ChecklistItem,
   ItemEffort,
   ItemPriority,
   ItemStatus,
@@ -113,11 +114,24 @@ export function toRequestSummary(row: Row): RequestSummary & { appName?: string;
   };
 }
 
-export function toRequestDetail(row: Row & { children?: Row[] }): RequestDetail {
+export function toChecklistItem(row: Row): ChecklistItem {
+  return {
+    id: str(row.id),
+    requestId: str(row.requestId),
+    title: str(row.title),
+    done: bool(row.done),
+    sortOrder: num(row.sortOrder),
+    createdAt: num(row.createdAt),
+    updatedAt: num(row.updatedAt),
+  };
+}
+
+export function toRequestDetail(row: Row & { children?: Row[]; checklist?: Row[] }): RequestDetail {
   const summary = toRequestSummary(row);
   return {
     ...summary,
     children: (row.children ?? []).map(toRequestSummary),
+    checklist: (row.checklist ?? []).map(toChecklistItem),
     parent: summary.parentId ? { id: summary.parentId, title: summary.parentTitle ?? "" } : null,
   };
 }

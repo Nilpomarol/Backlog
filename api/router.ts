@@ -27,6 +27,7 @@ const createItemSchema = z.object({
   title: z.string().trim().min(3).max(160),
   description: z.string().trim().max(4000).optional().default(""),
   type: itemType,
+  priority: itemPriority.optional().default("none"),
   visibility: itemVisibility.optional().default("shared"),
 });
 const updateItemSchema = z.object({
@@ -451,15 +452,16 @@ api.post("/items", async (context) => {
   if (!parsed.success) return context.json({ error: { code: "invalid_request", message: parsed.error.issues[0]?.message } }, 400);
   const currentUser = context.get("user");
   if (parsed.data.visibility === "internal" && currentUser.role !== "admin") return context.json({ error: { code: "forbidden", message: "Only administrators can create internal requests." } }, 403);
+  if (parsed.data.priority !== "none" && currentUser.role !== "admin") return context.json({ error: { code: "forbidden", message: "Only administrators can set priority." } }, 403);
 
   const client = getClient(context.env);
   if (!(await canAccessApp(client, currentUser, parsed.data.appId))) return context.json({ error: { code: "forbidden", message: "You do not have access to this application." } }, 403);
   const id = crypto.randomUUID();
   const now = Date.now();
   await client.execute({
-    sql: `INSERT INTO backlog_items (id, app_id, creator_id, title, description, type, status, visibility, created_at, updated_at)
-          VALUES (?, ?, ?, ?, ?, ?, 'backlog', ?, ?, ?)`,
-    args: [id, parsed.data.appId, currentUser.id, parsed.data.title, parsed.data.description || null, parsed.data.type, parsed.data.visibility, now, now],
+    sql: `INSERT INTO backlog_items (id, app_id, creator_id, title, description, type, status, priority, visibility, created_at, updated_at)
+          VALUES (?, ?, ?, ?, ?, ?, 'backlog', ?, ?, ?, ?)`,
+    args: [id, parsed.data.appId, currentUser.id, parsed.data.title, parsed.data.description || null, parsed.data.type, parsed.data.priority, parsed.data.visibility, now, now],
   });
   return context.json({ data: { id } }, 201);
 });

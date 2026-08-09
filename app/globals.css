@@ -440,8 +440,21 @@ ul, ol { margin: 0; padding: 0; list-style: none; }
 }
 .select-sm { min-height: 32px; font-size: 13px; padding: var(--space-1) var(--space-6) var(--space-1) var(--space-2); }
 
+/* --- Dropdown: a Menu (see overlay.tsx) styled to sit where a <select> would --- */
+.dropdown-trigger {
+  width: 100%; min-height: 40px; padding: var(--space-2) var(--space-3);
+  display: flex; align-items: center; justify-content: space-between; gap: var(--space-2);
+  background: var(--surface); color: var(--text-primary); text-align: left; cursor: pointer;
+  border: 1px solid var(--border-control); border-radius: var(--radius-md);
+  font-size: 15px; transition: border-color var(--duration-fast) var(--ease-in);
+}
+.dropdown-trigger:hover { border-color: var(--text-secondary); }
+.dropdown-trigger-value { display: flex; align-items: center; gap: var(--space-2); min-width: 0; }
+.dropdown-panel { left: 0; right: auto; width: 100%; min-width: 0; }
+.dropdown-check { margin-left: auto; color: var(--action); flex-shrink: 0; }
+
 @media (pointer: coarse) {
-  .input, .textarea, .select { min-height: 44px; font-size: 16px; } /* 16px prevents iOS zoom-on-focus */
+  .input, .textarea, .select, .dropdown-trigger { min-height: 44px; font-size: 16px; } /* 16px prevents iOS zoom-on-focus */
   .select-sm { min-height: 40px; }
 }
 

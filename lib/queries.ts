@@ -277,6 +277,7 @@ export function useCreateRequest() {
       title: string;
       description: string;
       type: ItemType;
+      priority: ItemPriority;
       visibility: Visibility;
     }) => {
       const payload = await request<Envelope<{ id: string }>>("/items", {

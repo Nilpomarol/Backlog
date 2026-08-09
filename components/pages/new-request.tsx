@@ -4,8 +4,16 @@ import { ChevronDown, Lightbulb } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState, type FormEvent } from "react";
-import { ITEM_PRIORITIES, ITEM_TYPES, type ItemPriority, type ItemType, type Visibility } from "../../lib/domain";
-import { priorityLabels, typeLabels } from "../../lib/i18n";
+import {
+  ITEM_EFFORTS,
+  ITEM_PRIORITIES,
+  ITEM_TYPES,
+  type ItemEffort,
+  type ItemPriority,
+  type ItemType,
+  type Visibility,
+} from "../../lib/domain";
+import { effortLabels, priorityLabels, typeLabels } from "../../lib/i18n";
 import {
   useAppItems,
   useApps,
@@ -13,7 +21,7 @@ import {
   useErrorMessage,
   useSimilarRequests,
 } from "../../lib/queries";
-import { priorityIcons, typeIcons } from "../badges";
+import { effortIcons, priorityIcons, typeIcons } from "../badges";
 import { useAuth, useLanguage } from "../providers";
 import { Button, SegmentedControl, TextAreaField, TextField } from "../ui/primitives";
 import { Dropdown, Sheet, type DropdownOption } from "../ui/overlay";
@@ -51,6 +59,7 @@ export function NewRequestSheet({
   const [description, setDescription] = useState("");
   const [type, setType] = useState<ItemType>("feature");
   const [priority, setPriority] = useState<ItemPriority>("none");
+  const [effort, setEffort] = useState<ItemEffort>("unknown");
   const [visibility, setVisibility] = useState<Visibility>(isAdmin ? "internal" : "shared");
   const [touched, setTouched] = useState(false);
   const [detailsOpen, setDetailsOpen] = useState(true);
@@ -88,6 +97,10 @@ export function NewRequestSheet({
     const Icon = priorityIcons[value];
     return { value, label: priorityLabels[language][value], icon: <Icon size={14} aria-hidden="true" /> };
   });
+  const effortOptions: DropdownOption<ItemEffort>[] = ITEM_EFFORTS.map((value) => {
+    const Icon = effortIcons[value];
+    return { value, label: effortLabels[language][value], icon: <Icon size={14} aria-hidden="true" /> };
+  });
 
   async function submit(event: FormEvent) {
     event.preventDefault();
@@ -101,6 +114,7 @@ export function NewRequestSheet({
         description: description.trim(),
         type,
         priority: isAdmin ? priority : "none",
+        effort: isAdmin ? effort : "unknown",
         visibility,
       });
       toast(t.toastCreated);
@@ -181,6 +195,15 @@ export function NewRequestSheet({
               {t.priority}
             </p>
             <Dropdown<ItemPriority> label={t.priority} value={priority} onChange={setPriority} options={priorityOptions} />
+          </div>
+        )}
+
+        {isAdmin && (
+          <div className="field">
+            <p className="field-label" id="effort-label">
+              {t.effort}
+            </p>
+            <Dropdown<ItemEffort> label={t.effort} value={effort} onChange={setEffort} options={effortOptions} />
           </div>
         )}
 

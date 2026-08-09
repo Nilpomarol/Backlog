@@ -1,5 +1,6 @@
 import type {
   Application,
+  ItemEffort,
   ItemPriority,
   ItemStatus,
   ItemType,
@@ -94,6 +95,7 @@ export function toRequestSummary(row: Row): RequestSummary & { appName?: string;
     type: str(row.type) as ItemType,
     status: str(row.status) as ItemStatus,
     priority: str(row.priority) as ItemPriority,
+    effort: str(row.effort) as ItemEffort,
     visibility: str(row.visibility) as Visibility,
     parentId: nullableStr(row.parentId),
     parentTitle: nullableStr(row.parentTitle),

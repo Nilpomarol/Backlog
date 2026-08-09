@@ -1,9 +1,9 @@
 "use client";
 
-import { Bug, ChevronDown, ChevronsUp, ChevronUp, CircleDashed, Lightbulb, Lock, Minus, ShieldCheck, TrendingUp, Wrench } from "lucide-react";
-import type { ItemPriority, ItemStatus, ItemType } from "../lib/domain";
+import { Bug, ChevronDown, ChevronsUp, ChevronUp, CircleDashed, Feather, Gauge, Lightbulb, Lock, Minus, Mountain, ShieldCheck, TrendingUp, Wrench } from "lucide-react";
+import type { ItemEffort, ItemPriority, ItemStatus, ItemType } from "../lib/domain";
 import { useLanguage } from "./providers";
-import { priorityLabels, statusLabels, statusLabelsSingular, typeLabels } from "../lib/i18n";
+import { effortLabels, priorityLabels, statusLabels, statusLabelsSingular, typeLabels } from "../lib/i18n";
 
 /** Type is always icon + colour + label: never colour alone (WCAG 1.4.1). */
 const typeIcons: Record<ItemType, typeof Bug> = {
@@ -84,6 +84,26 @@ export function PriorityChip({
   );
 }
 
+/** Smallest first, matching ITEM_EFFORTS — "unknown" reuses priority's "none" glyph since both
+ *  mean "nobody has estimated this yet". */
+const effortIcons: Record<ItemEffort, typeof Feather> = {
+  small: Feather,
+  medium: Gauge,
+  large: Mountain,
+  unknown: CircleDashed,
+};
+
+export function EffortChip({ effort, size = 12 }: { effort: ItemEffort; size?: number }) {
+  const { language } = useLanguage();
+  const Icon = effortIcons[effort];
+  return (
+    <span className="chip chip-neutral">
+      <Icon size={size} aria-hidden="true" />
+      {effortLabels[language][effort]}
+    </span>
+  );
+}
+
 export function StatusDot({ status }: { status: ItemStatus }) {
   return <span className={`status-dot status-dot-${status}`} aria-hidden="true" />;
 }
@@ -144,4 +164,4 @@ export function usePriorityLabel() {
   return (priority: ItemPriority) => priorityLabels[language][priority];
 }
 
-export { priorityIcons, typeIcons };
+export { effortIcons, priorityIcons, typeIcons };

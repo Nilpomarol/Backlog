@@ -52,7 +52,7 @@ export function NewRequestSheet({
   const [type, setType] = useState<ItemType>("feature");
   const [visibility, setVisibility] = useState<Visibility>(isAdmin ? "internal" : "shared");
   const [touched, setTouched] = useState(false);
-  const [detailsOpen, setDetailsOpen] = useState(false);
+  const [detailsOpen, setDetailsOpen] = useState(true);
 
   // Debounce the title before asking the server for possible duplicates.
   const [debouncedTitle, setDebouncedTitle] = useState("");

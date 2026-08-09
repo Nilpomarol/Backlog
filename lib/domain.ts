@@ -64,8 +64,21 @@ export type RequestSummary = {
   updatedAt: number;
 };
 
+export type ChecklistItem = {
+  id: string;
+  requestId: string;
+  title: string;
+  done: boolean;
+  sortOrder: number;
+  createdAt: number;
+  updatedAt: number;
+};
+
 export type RequestDetail = RequestSummary & {
+  /** Other, independently-created cards linked under this one (see components/child-cards.tsx) —
+   *  not a lesser "subtask" entity, just another request with parentId set. */
   children: RequestSummary[];
+  checklist: ChecklistItem[];
   parent: { id: string; title: string } | null;
 };
 

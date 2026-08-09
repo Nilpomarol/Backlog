@@ -37,13 +37,16 @@ const updateItemSchema = z.object({
   title: z.string().trim().min(3).max(160).optional(),
   description: z.string().trim().max(4000).nullable().optional(),
   type: itemType.optional(),
+  // Links or unlinks this item from a parent — see the validation in PATCH /items/:id below.
+  parentId: z.string().min(1).max(80).nullable().optional(),
 }).strict().refine((value) => Object.keys(value).length > 0, "No changes supplied.");
-const createChildSchema = z.object({
-  title: z.string().trim().min(1).max(160),
-  description: z.string().trim().max(4000).optional().default(""),
-  type: itemType.optional().default("task"),
-  priority: itemPriority.optional().default("none"),
+const checklistItemSchema = z.object({
+  title: z.string().trim().min(1).max(200),
 }).strict();
+const updateChecklistItemSchema = z.object({
+  title: z.string().trim().min(1).max(200).optional(),
+  done: z.boolean().optional(),
+}).strict().refine((value) => Object.keys(value).length > 0, "No changes supplied.");
 const avatarUrl = z.string().trim().url().max(1000).refine((value) => value.startsWith("https://"), "Profile images must use HTTPS.").nullable();
 const appFields = {
   name: z.string().trim().min(2).max(80),
@@ -446,7 +449,12 @@ api.get("/items/:id", async (context) => {
           WHERE c.parent_id = ? GROUP BY c.id ORDER BY c.created_at`,
     args: [currentUser.id, item.id],
   });
-  return context.json({ data: { ...detail.rows[0], children: children.rows } });
+  const checklist = await client.execute({
+    sql: `SELECT id, request_id AS requestId, title, done, sort_order AS sortOrder, created_at AS createdAt, updated_at AS updatedAt
+          FROM checklist_items WHERE request_id = ? ORDER BY sort_order, created_at`,
+    args: [item.id],
+  });
+  return context.json({ data: { ...detail.rows[0], children: children.rows, checklist: checklist.rows } });
 });
 
 api.post("/items", async (context) => {
@@ -482,8 +490,18 @@ api.patch("/items/:id", async (context) => {
     if (target.rows.length === 0) return context.json({ error: { code: "invalid_request", message: "That application does not exist." } }, 400);
     if (!(await canAccessApp(client, currentUser, parsed.data.appId))) return context.json({ error: { code: "forbidden", message: "You do not have access to this application." } }, 403);
   }
+  if (parsed.data.parentId !== undefined && parsed.data.parentId !== null) {
+    if (parsed.data.parentId === item.id) return context.json({ error: { code: "invalid_request", message: "A card cannot link to itself." } }, 400);
+    if (item.parentId) return context.json({ error: { code: "invalid_request", message: "This card is already linked to a parent. Unlink it first." } }, 400);
+    const parent = await findItem(client, parsed.data.parentId);
+    if (!parent) return context.json({ error: { code: "invalid_request", message: "That card does not exist." } }, 400);
+    if (parent.appId !== (parsed.data.appId ?? item.appId)) return context.json({ error: { code: "invalid_request", message: "Linked cards must be in the same application." } }, 400);
+    if (parent.parentId) return context.json({ error: { code: "invalid_request", message: "That card is itself linked to a parent and cannot have its own linked cards." } }, 400);
+    const childCount = await client.execute({ sql: "SELECT COUNT(*) AS count FROM backlog_items WHERE parent_id = ?", args: [item.id] });
+    if (Number(childCount.rows[0]?.count ?? 0) > 0) return context.json({ error: { code: "invalid_request", message: "This card already has its own linked cards." } }, 400);
+  }
   const columns: Record<string, string | number | null | undefined> = { ...parsed.data, updatedAt: Date.now() };
-  const names: Record<string, string> = { appId: "app_id", title: "title", description: "description", type: "type", updatedAt: "updated_at" };
+  const names: Record<string, string> = { appId: "app_id", title: "title", description: "description", type: "type", parentId: "parent_id", updatedAt: "updated_at" };
   const entries = Object.entries(columns);
   await client.execute({ sql: `UPDATE backlog_items SET ${entries.map(([key]) => `${names[key]} = ?`).join(", ")} WHERE id = ?`, args: [...entries.map(([, value]) => value ?? null), item.id] });
   return context.json({ data: { id: item.id } });
@@ -521,7 +539,6 @@ api.patch("/items/:id/visibility", async (context) => {
   const client = getClient(context.env);
   const item = await findItem(client, context.req.param("id"));
   if (!item) return context.json({ error: { code: "not_found", message: "Request not found." } }, 404);
-  if (item.parentId) return context.json({ error: { code: "invalid_request", message: "Subtask cards are always internal." } }, 400);
   await client.execute({ sql: "UPDATE backlog_items SET visibility = ?, updated_at = ? WHERE id = ?", args: [parsed.data.visibility, Date.now(), item.id] });
   return context.json({ data: { id: item.id, visibility: parsed.data.visibility } });
 });
@@ -532,6 +549,9 @@ api.delete("/items/:id", async (context) => {
   const item = await findItem(client, context.req.param("id"));
   if (!item || !canReadItem(currentUser, item, await canAccessApp(client, currentUser, item.appId))) return context.json({ error: { code: "not_found", message: "Request not found." } }, 404);
   if (!canDeleteItem(currentUser, item)) return context.json({ error: { code: "forbidden", message: "You cannot delete this request." } }, 403);
+  // Linked cards are independent — deleting this one should only unlink them, never take them
+  // down too. Unlinking first turns the FK's ON DELETE cascade into a no-op below.
+  await client.execute({ sql: "UPDATE backlog_items SET parent_id = NULL, updated_at = ? WHERE parent_id = ?", args: [Date.now(), item.id] });
   await client.execute({ sql: "DELETE FROM backlog_items WHERE id = ?", args: [item.id] });
   return context.body(null, 204);
 });
@@ -553,23 +573,61 @@ api.delete("/items/:id/vote", async (context) => {
   return context.body(null, 204);
 });
 
-api.post("/items/:id/children", async (context) => {
-  const parsed = createChildSchema.safeParse(await context.req.json().catch(() => null));
+api.post("/items/:id/checklist", async (context) => {
+  const parsed = checklistItemSchema.safeParse(await context.req.json().catch(() => null));
   if (!parsed.success) return context.json({ error: { code: "invalid_request", message: parsed.error.issues[0]?.message } }, 400);
   const currentUser = context.get("user");
   const client = getClient(context.env);
   const item = await findItem(client, context.req.param("id"));
   if (!item || !canReadItem(currentUser, item, await canAccessApp(client, currentUser, item.appId))) return context.json({ error: { code: "not_found", message: "Request not found." } }, 404);
-  if (!canManageSubtasks(currentUser, item)) return context.json({ error: { code: "forbidden", message: "You cannot manage subtasks for this request." } }, 403);
-  if (item.parentId) return context.json({ error: { code: "invalid_request", message: "A subtask card cannot have its own subtasks." } }, 400);
+  if (!canManageSubtasks(currentUser, item)) return context.json({ error: { code: "forbidden", message: "You cannot manage the checklist for this request." } }, 403);
+  const position = await client.execute({ sql: "SELECT COALESCE(MAX(sort_order), -1) + 1 AS nextPosition FROM checklist_items WHERE request_id = ?", args: [item.id] });
   const id = crypto.randomUUID();
   const now = Date.now();
   await client.execute({
-    sql: `INSERT INTO backlog_items (id, app_id, creator_id, title, description, type, status, priority, visibility, parent_id, created_at, updated_at)
-          VALUES (?, ?, ?, ?, ?, ?, 'backlog', ?, 'internal', ?, ?, ?)`,
-    args: [id, item.appId, currentUser.id, parsed.data.title, parsed.data.description || null, parsed.data.type, parsed.data.priority, item.id, now, now],
+    sql: `INSERT INTO checklist_items (id, request_id, title, done, sort_order, created_at, updated_at)
+          VALUES (?, ?, ?, 0, ?, ?, ?)`,
+    args: [id, item.id, parsed.data.title, Number(position.rows[0]?.nextPosition ?? 0), now, now],
   });
   return context.json({ data: { id } }, 201);
+});
+
+async function findChecklistItem(client: ReturnType<typeof getClient>, id: string) {
+  const result = await client.execute({
+    sql: `SELECT ci.id, ci.request_id AS requestId, b.creator_id AS creatorId
+          FROM checklist_items ci JOIN backlog_items b ON b.id = ci.request_id WHERE ci.id = ?`,
+    args: [id],
+  });
+  const row = result.rows[0];
+  if (!row) return null;
+  return { id: String(row.id), requestId: String(row.requestId), creatorId: String(row.creatorId) };
+}
+
+api.patch("/checklist/:id", async (context) => {
+  const parsed = updateChecklistItemSchema.safeParse(await context.req.json().catch(() => null));
+  if (!parsed.success) return context.json({ error: { code: "invalid_request", message: parsed.error.issues[0]?.message } }, 400);
+  const currentUser = context.get("user");
+  const client = getClient(context.env);
+  const checklistItem = await findChecklistItem(client, context.req.param("id"));
+  if (!checklistItem) return context.json({ error: { code: "not_found", message: "Checklist item not found." } }, 404);
+  if (!canManageSubtasks(currentUser, checklistItem)) return context.json({ error: { code: "forbidden", message: "You cannot manage the checklist for this request." } }, 403);
+  const columns: Record<string, string | number> = { updatedAt: Date.now() };
+  if (parsed.data.title !== undefined) columns.title = parsed.data.title;
+  if (parsed.data.done !== undefined) columns.done = parsed.data.done ? 1 : 0;
+  const names: Record<string, string> = { title: "title", done: "done", updatedAt: "updated_at" };
+  const entries = Object.entries(columns);
+  await client.execute({ sql: `UPDATE checklist_items SET ${entries.map(([key]) => `${names[key]} = ?`).join(", ")} WHERE id = ?`, args: [...entries.map(([, value]) => value), checklistItem.id] });
+  return context.json({ data: { id: checklistItem.id } });
+});
+
+api.delete("/checklist/:id", async (context) => {
+  const currentUser = context.get("user");
+  const client = getClient(context.env);
+  const checklistItem = await findChecklistItem(client, context.req.param("id"));
+  if (!checklistItem) return context.json({ error: { code: "not_found", message: "Checklist item not found." } }, 404);
+  if (!canManageSubtasks(currentUser, checklistItem)) return context.json({ error: { code: "forbidden", message: "You cannot manage the checklist for this request." } }, 403);
+  await client.execute({ sql: "DELETE FROM checklist_items WHERE id = ?", args: [checklistItem.id] });
+  return context.body(null, 204);
 });
 
 async function findItem(client: ReturnType<typeof getClient>, id: string): Promise<ItemRecord | null> {

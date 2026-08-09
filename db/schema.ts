@@ -44,8 +44,12 @@ export const backlogItems = sqliteTable("backlog_items", {
   id: text("id").primaryKey(),
   appId: text("app_id").notNull().references(() => apps.id, { onDelete: "cascade" }),
   creatorId: text("creator_id").notNull().references(() => users.id, { onDelete: "restrict" }),
-  // A subtask card is an ordinary backlog_items row with parentId set. It always carries
-  // visibility 'internal' (enforced in the API, not the schema) and cannot itself have children.
+  // A linked card is an ordinary backlog_items row with parentId set, created independently
+  // (via the normal create flow) and then attached to another request — it is not a lesser
+  // "subtask" entity and keeps its own visibility. Neither end of the link may itself already
+  // have a parent (enforced in the API, not the schema): no two-level nesting. The FK still
+  // cascades at the database level, but the API unlinks children (sets parentId to NULL) before
+  // deleting a parent, so deleting one card never silently deletes another.
   parentId: text("parent_id").references((): AnySQLiteColumn => backlogItems.id, { onDelete: "cascade" }),
   title: text("title").notNull(),
   description: text("description"),
@@ -67,6 +71,21 @@ export const backlogItems = sqliteTable("backlog_items", {
   check("backlog_items_priority_check", sql`${table.priority} in ('urgent', 'high', 'medium', 'low', 'none')`),
   check("backlog_items_effort_check", sql`${table.effort} in ('small', 'medium', 'large', 'unknown')`),
   check("backlog_items_visibility_check", sql`${table.visibility} in ('shared', 'internal')`),
+]);
+
+// A lightweight "do these things" list scoped to one request — distinct from a linked card
+// (backlogItems with parentId set): a checklist item has no type/status/priority/votes of its
+// own and only ever exists in the context of its request.
+export const checklistItems = sqliteTable("checklist_items", {
+  id: text("id").primaryKey(),
+  requestId: text("request_id").notNull().references(() => backlogItems.id, { onDelete: "cascade" }),
+  title: text("title").notNull(),
+  done: integer("done", { mode: "boolean" }).notNull().default(false),
+  sortOrder: integer("sort_order").notNull().default(0),
+  createdAt: timestamp("created_at"),
+  updatedAt: timestamp("updated_at"),
+}, (table) => [
+  index("idx_checklist_items_request").on(table.requestId),
 ]);
 
 export const votes = sqliteTable("votes", {

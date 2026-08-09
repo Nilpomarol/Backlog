@@ -33,7 +33,9 @@ export function canChangeWorkflow(user: PermissionUser) {
   return user.role === "admin";
 }
 
-export function canManageSubtasks(user: PermissionUser, item: PermissionItem) {
+// Also gates checklist-item management, whose lookup doesn't carry a visibility — narrower than
+// PermissionItem on purpose.
+export function canManageSubtasks(user: PermissionUser, item: { creatorId: string }) {
   return user.role === "admin" || user.id === item.creatorId;
 }
 

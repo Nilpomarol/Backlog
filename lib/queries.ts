@@ -301,18 +301,28 @@ export function useUpdateRequest() {
     title?: string;
     description?: string | null;
     type?: ItemType;
+    /** Links (a request id) or unlinks (null) this card from a parent. */
+    parentId?: string | null;
+    /** The other end of a link/unlink — the parent being linked to, or unlinked from — whose
+     *  cached children list also needs a refresh. Not sent to the server. */
+    relatedRequestId?: string;
   };
   return useMutation({
-    mutationFn: async ({ id, ...changes }: Input) => {
+    mutationFn: async ({ id, relatedRequestId, ...changes }: Input) => {
+      void relatedRequestId;
       await request(`/items/${encodeURIComponent(id)}`, { method: "PATCH", body: JSON.stringify(changes) });
     },
-    onMutate: async ({ id, ...changes }: Input) => {
+    onMutate: async ({ id, relatedRequestId, ...changes }: Input) => {
+      void relatedRequestId;
       const snapshot = await snapshotRequestCaches(client, id);
       patchRequestCaches(client, id, (item) => ({ ...item, ...changes }));
       return { ...snapshot, id };
     },
     onError: (_error, _input, context) => restoreRequestCaches(client, context?.id ?? "", context),
-    onSettled: (_data, _error, { id }) => invalidateRequestData(client, id),
+    onSettled: (_data, _error, { id, relatedRequestId }) => {
+      invalidateRequestData(client, id);
+      if (relatedRequestId) void client.invalidateQueries({ queryKey: queryKeys.request(relatedRequestId) });
+    },
   });
 }
 
@@ -398,34 +408,74 @@ export function useDeleteRequest() {
   });
 }
 
-// --- Child (subtask) card writes ------------------------------------------------------------
+// --- Checklist writes -----------------------------------------------------------------------
+// A checklist item is deliberately not a full request: no optimistic patch on create (its id
+// comes from the server), but toggling/renaming/deleting patch the parent's cached detail
+// directly since both id and requestId are already known client-side.
 
-/** Creates a linked subtask card under a parent request. No optimistic patch — the new card's
- *  id comes from the server, and it needs a full row (status, votes, etc.) to render. */
-export function useCreateChildRequest() {
+export function useCreateChecklistItem() {
   const { request } = useAuth();
   const client = useQueryClient();
   return useMutation({
-    mutationFn: async ({
-      requestId,
-      title,
-      description,
-      type,
-      priority,
-    }: {
-      requestId: string;
-      title: string;
-      description?: string;
-      type?: ItemType;
-      priority?: ItemPriority;
-    }) => {
-      const payload = await request<Envelope<{ id: string }>>(`/items/${encodeURIComponent(requestId)}/children`, {
+    mutationFn: async ({ requestId, title }: { requestId: string; title: string }) => {
+      const payload = await request<Envelope<{ id: string }>>(`/items/${encodeURIComponent(requestId)}/checklist`, {
         method: "POST",
-        body: JSON.stringify({ title, description, type, priority }),
+        body: JSON.stringify({ title }),
       });
       return payload.data;
     },
-    onSuccess: (_data, { requestId }) => invalidateRequestData(client, requestId),
+    onSuccess: (_data, { requestId }) => void client.invalidateQueries({ queryKey: queryKeys.request(requestId) }),
+  });
+}
+
+type ChecklistPatchInput = { id: string; requestId: string; title?: string; done?: boolean };
+
+function patchChecklistCache(client: QueryClient, requestId: string, patch: (list: RequestDetail["checklist"]) => RequestDetail["checklist"]) {
+  const previous = client.getQueryData<RequestDetail>(queryKeys.request(requestId));
+  client.setQueryData<RequestDetail>(queryKeys.request(requestId), (detail) =>
+    detail ? { ...detail, checklist: patch(detail.checklist) } : detail,
+  );
+  return previous;
+}
+
+export function useUpdateChecklistItem() {
+  const { request } = useAuth();
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, requestId, ...changes }: ChecklistPatchInput) => {
+      void requestId;
+      await request(`/checklist/${encodeURIComponent(id)}`, { method: "PATCH", body: JSON.stringify(changes) });
+    },
+    onMutate: async ({ id, requestId, ...changes }: ChecklistPatchInput) => {
+      await client.cancelQueries({ queryKey: queryKeys.request(requestId) });
+      const previous = patchChecklistCache(client, requestId, (list) =>
+        list.map((entry) => (entry.id === id ? { ...entry, ...changes } : entry)),
+      );
+      return { previous, requestId };
+    },
+    onError: (_error, _input, context) => {
+      if (context?.previous) client.setQueryData(queryKeys.request(context.requestId), context.previous);
+    },
+    onSettled: (_data, _error, { requestId }) => void client.invalidateQueries({ queryKey: queryKeys.request(requestId) }),
+  });
+}
+
+export function useDeleteChecklistItem() {
+  const { request } = useAuth();
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id }: { id: string; requestId: string }) => {
+      await request(`/checklist/${encodeURIComponent(id)}`, { method: "DELETE" });
+    },
+    onMutate: async ({ id, requestId }: { id: string; requestId: string }) => {
+      await client.cancelQueries({ queryKey: queryKeys.request(requestId) });
+      const previous = patchChecklistCache(client, requestId, (list) => list.filter((entry) => entry.id !== id));
+      return { previous, requestId };
+    },
+    onError: (_error, _input, context) => {
+      if (context?.previous) client.setQueryData(queryKeys.request(context.requestId), context.previous);
+    },
+    onSettled: (_data, _error, { requestId }) => void client.invalidateQueries({ queryKey: queryKeys.request(requestId) }),
   });
 }
 

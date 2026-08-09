@@ -32,6 +32,7 @@ import { priorityLabels, statusLabels, typeLabels } from "../../lib/i18n";
 import { useAppItems, useApps, useErrorMessage, useSetStatus, useSetVisibility } from "../../lib/queries";
 import { StatusDot } from "../badges";
 import { useAuth, useLanguage } from "../providers";
+import { NewRequestSheet } from "./new-request";
 import { RequestCard, RequestRow } from "../request-card";
 import { AppIcon, Button, IconButton, SkeletonCard, SkeletonList } from "../ui/primitives";
 import { Menu, MenuLabel, Sheet } from "../ui/overlay";
@@ -515,6 +516,8 @@ export function AppBacklogPage({ appId }: { appId: string }) {
   const { profile } = useAuth();
   const isAdmin = profile?.role === "admin";
   const filters = useFilters();
+  const searchParams = useSearchParams();
+  const router = useRouter();
 
   const { data: apps = [] } = useApps();
   const { data: items, isPending, isError, error, refetch } = useAppItems(appId);
@@ -526,6 +529,26 @@ export function AppBacklogPage({ appId }: { appId: string }) {
   const [selected, setSelected] = useState<string[]>([]);
   const [draggedId, setDraggedId] = useState<string | null>(null);
   const [dragOverStatus, setDragOverStatus] = useState<ItemStatus | null>(null);
+  // The header "+" and the tabbar/overview "new request" links point at `?new=1` (see
+  // AppShell and overview.tsx) so opening the composer never leaves the board behind in
+  // history — see components/pages/new-request.tsx.
+  const [newOpen, setNewOpen] = useState(() => searchParams.get("new") === "1");
+  // Remounts the sheet each time it opens, so its form state (title, description, ...) always
+  // starts blank instead of carrying over a previous draft.
+  const [newRequestKey, setNewRequestKey] = useState(0);
+  const openNewRequest = () => {
+    setNewRequestKey((key) => key + 1);
+    setNewOpen(true);
+  };
+  useEffect(() => {
+    if (searchParams.get("new") !== "1") return;
+    const next = new URLSearchParams(searchParams.toString());
+    next.delete("new");
+    const query = next.toString();
+    router.replace(query ? `?${query}` : "?", { scroll: false });
+    // Only reacts to the initial "new=1" arriving via URL; not a general searchParams sync.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const app = apps.find((entry) => entry.id === appId);
   const visible = useMemo(() => applyFilters(items ?? [], filters, profile?.id), [items, filters, profile?.id]);
@@ -604,10 +627,10 @@ export function AppBacklogPage({ appId }: { appId: string }) {
           </div>
         </div>
 
-        <Link href={`/a/${encodeURIComponent(appId)}/new`} className="btn btn-primary page-new-btn">
+        <button type="button" className="btn btn-primary page-new-btn" onClick={openNewRequest}>
           <Plus size={18} aria-hidden="true" />
           <span className="sr-only-mobile">{t.newRequest}</span>
-        </Link>
+        </button>
       </header>
 
       {isError ? (
@@ -658,10 +681,9 @@ export function AppBacklogPage({ appId }: { appId: string }) {
                 title={t.noRequests}
                 body={t.noRequestsBody}
                 action={
-                  <Link href={`/a/${encodeURIComponent(appId)}/new`} className="btn btn-primary">
-                    <Plus size={16} aria-hidden="true" />
+                  <Button variant="primary" icon={<Plus size={16} aria-hidden="true" />} onClick={openNewRequest}>
                     {t.newRequest}
-                  </Link>
+                  </Button>
                 }
               />
             )
@@ -794,6 +816,8 @@ export function AppBacklogPage({ appId }: { appId: string }) {
           )}
         </>
       )}
+
+      <NewRequestSheet key={newRequestKey} appId={appId} open={newOpen} onClose={() => setNewOpen(false)} />
     </div>
   );
 }

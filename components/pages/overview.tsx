@@ -55,7 +55,7 @@ function AppBoard({ app, items }: { app: Application; items: RequestSummary[] })
           </span>
         </Link>
         <div className="app-board-actions">
-          <Link href={`${href}/new`} className="icon-btn" aria-label={t.newRequest}>
+          <Link href={`${href}?new=1`} className="icon-btn" aria-label={t.newRequest}>
             <Plus size={16} aria-hidden="true" />
           </Link>
           <Link href={href} className="btn btn-secondary btn-sm">
@@ -68,7 +68,7 @@ function AppBoard({ app, items }: { app: Application; items: RequestSummary[] })
       {items.length === 0 ? (
         <div className="app-board-empty">
           <span>{t.appBoardEmpty}</span>
-          <Link href={`${href}/new`} className="btn btn-secondary btn-sm">
+          <Link href={`${href}?new=1`} className="btn btn-secondary btn-sm">
             <Plus size={14} aria-hidden="true" />
             {t.newRequest}
           </Link>

@@ -1,10 +1,9 @@
 "use client";
 
-import { ArrowLeft, ChevronDown, Lightbulb } from "lucide-react";
+import { ChevronDown, Lightbulb } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState, type FormEvent } from "react";
-import { useBackHref } from "../../lib/board-return";
 import { ITEM_TYPES, type ItemType, type Visibility } from "../../lib/domain";
 import { typeLabels } from "../../lib/i18n";
 import {
@@ -17,6 +16,7 @@ import {
 import { typeIcons } from "../badges";
 import { useAuth, useLanguage } from "../providers";
 import { Button, SegmentedControl, TextAreaField, TextField } from "../ui/primitives";
+import { Sheet } from "../ui/overlay";
 import { useToast } from "../ui/toast";
 import { VoteButton } from "../vote-button";
 
@@ -24,7 +24,18 @@ const TITLE_MIN = 3;
 const TITLE_MAX = 160;
 const DESCRIPTION_MAX = 4000;
 
-export function NewRequestPage({ appId }: { appId: string }) {
+/** The "new request" form, presented as a Sheet over the board it was opened from rather than
+ *  a full-page route — so creating a card (or backing out of the form) never leaves the board
+ *  behind in browser history. */
+export function NewRequestSheet({
+  appId,
+  open,
+  onClose,
+}: {
+  appId: string;
+  open: boolean;
+  onClose: () => void;
+}) {
   const { t, language } = useLanguage();
   const router = useRouter();
   const { profile } = useAuth();
@@ -35,15 +46,11 @@ export function NewRequestPage({ appId }: { appId: string }) {
   const { data: apps = [] } = useApps();
   const createRequest = useCreateRequest();
 
-  // Returns to wherever the user actually came from instead of resetting to the bare board —
-  // see lib/board-return.ts.
-  const boardHref = useBackHref(appId);
-
   const [targetAppId, setTargetAppId] = useState(appId);
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [type, setType] = useState<ItemType>("feature");
-  const [visibility, setVisibility] = useState<Visibility>("shared");
+  const [visibility, setVisibility] = useState<Visibility>(isAdmin ? "internal" : "shared");
   const [touched, setTouched] = useState(false);
   const [detailsOpen, setDetailsOpen] = useState(false);
 
@@ -70,7 +77,6 @@ export function NewRequestPage({ appId }: { appId: string }) {
 
   const trimmedTitle = title.trim();
   const titleError = touched && trimmedTitle.length < TITLE_MIN ? t.titleTooShort : undefined;
-  const app = apps.find((entry) => entry.id === targetAppId);
   const descriptionLeft = DESCRIPTION_MAX - description.length;
 
   async function submit(event: FormEvent) {
@@ -87,6 +93,7 @@ export function NewRequestPage({ appId }: { appId: string }) {
         visibility,
       });
       toast(t.toastCreated);
+      onClose();
       router.push(`/r/${encodeURIComponent(created.id)}`);
     } catch (error) {
       toast(describeError(error), { tone: "error" });
@@ -94,162 +101,159 @@ export function NewRequestPage({ appId }: { appId: string }) {
   }
 
   return (
-    <div className="page page-prose">
-      <nav className="breadcrumb" aria-label={t.backTo}>
-        <Link href={boardHref} className="btn btn-ghost btn-sm">
-          <ArrowLeft size={14} aria-hidden="true" />
-          {app?.name ?? t.backToBacklog}
-        </Link>
-      </nav>
-
-      <header className="page-header">
-        <h1 className="t-display">{t.newRequestTitle}</h1>
-        <p className="page-subtitle">{t.newRequestSubtitle}</p>
-      </header>
-
-      <form onSubmit={submit} noValidate>
-        <div className="new-request-card">
-          <TextField
-            label={t.titleLabel}
-            value={title}
-            onChange={(event) => setTitle(event.target.value)}
-            onBlur={() => setTouched(true)}
-            placeholder={t.titlePlaceholder}
-            maxLength={TITLE_MAX}
-            error={titleError}
-            large
-            autoFocus
-            required
-          />
-
-          {suggestions.length > 0 && (
-            <div className="duplicates" style={{ marginBottom: "var(--space-4)" }}>
-              <p className="duplicates-title">
-                <Lightbulb size={13} aria-hidden="true" style={{ verticalAlign: -2, marginRight: 4 }} />
-                {t.duplicatesTitle}
-              </p>
-              <p className="duplicates-hint">{t.duplicatesHint}</p>
-              {suggestions.map((item) => (
-                <div className="duplicate-row" key={item.id}>
-                  <span className="duplicate-body">
-                    <span className="duplicate-title">{item.title}</span>
-                  </span>
-                  {item.full ? (
-                    <VoteButton request={item.full} />
-                  ) : (
-                    <span className="t-mono text-tertiary">{item.votes}</span>
-                  )}
-                  <Link href={`/r/${encodeURIComponent(item.id)}`} className="btn btn-secondary btn-sm">
-                    {t.openInstead}
-                  </Link>
-                </div>
-              ))}
-            </div>
-          )}
-
-          <div className="field">
-            <p className="field-label" id="type-label">
-              {t.typeLabel}
-            </p>
-            <div className="type-picker" role="radiogroup" aria-labelledby="type-label">
-              {ITEM_TYPES.map((value) => {
-                const Icon = typeIcons[value];
-                return (
-                  <button
-                    key={value}
-                    type="button"
-                    role="radio"
-                    aria-checked={type === value}
-                    className={`type-option type-option-${value}`}
-                    onClick={() => setType(value)}
-                  >
-                    <Icon size={16} aria-hidden="true" />
-                    {typeLabels[language][value]}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-
-          <button
-            type="button"
-            className="disclosure-trigger"
-            aria-expanded={detailsOpen}
-            aria-controls="new-request-details"
-            onClick={() => setDetailsOpen((open) => !open)}
-          >
-            <ChevronDown size={16} aria-hidden="true" />
-            {detailsOpen ? t.hideDetails : t.addDetails}
-          </button>
-
-          {detailsOpen && (
-            <div className="disclosure-body" id="new-request-details">
-              <TextAreaField
-                label={t.descriptionLabel}
-                optional={t.optional}
-                value={description}
-                onChange={(event) => setDescription(event.target.value)}
-                placeholder={t.descriptionPlaceholder}
-                maxLength={DESCRIPTION_MAX}
-                rows={5}
-                autoFocus
-                trailing={
-                  descriptionLeft < 500 ? (
-                    <p className={`char-counter${descriptionLeft < 100 ? " char-counter-warn" : ""}`}>
-                      {t.charactersLeft(descriptionLeft)}
-                    </p>
-                  ) : undefined
-                }
-              />
-
-              {apps.length > 1 && (
-                <div className="field">
-                  <label className="field-label" htmlFor="target-app">
-                    {t.appLabel}
-                  </label>
-                  <select
-                    id="target-app"
-                    className="select"
-                    value={targetAppId}
-                    onChange={(event) => setTargetAppId(event.target.value)}
-                  >
-                    {apps.map((entry) => (
-                      <option key={entry.id} value={entry.id}>
-                        {entry.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              )}
-
-              {isAdmin && (
-                <div className="field">
-                  <p className="field-label">{t.visibilityLabel}</p>
-                  <SegmentedControl<Visibility>
-                    label={t.visibilityLabel}
-                    value={visibility}
-                    onChange={setVisibility}
-                    options={[
-                      { value: "shared", label: t.shared },
-                      { value: "internal", label: t.internal },
-                    ]}
-                  />
-                  <p className="field-hint">{t.visibilityHint}</p>
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-
-        <div className="form-actions">
-          <Link href={`/a/${encodeURIComponent(appId)}`} className="btn btn-secondary">
+    <Sheet
+      open={open}
+      onClose={onClose}
+      title={t.newRequestTitle}
+      subtitle={t.newRequestSubtitle}
+      closeLabel={t.close}
+      footer={
+        <>
+          <Button variant="secondary" onClick={onClose}>
             {t.cancel}
-          </Link>
-          <Button type="submit" variant="primary" size="lg" loading={createRequest.isPending}>
+          </Button>
+          <Button type="submit" form="new-request-form" variant="primary" loading={createRequest.isPending}>
             {createRequest.isPending ? t.creating : t.create}
           </Button>
+        </>
+      }
+    >
+      <form
+        id="new-request-form"
+        onSubmit={submit}
+        noValidate
+        style={{ display: "flex", flexDirection: "column", gap: "var(--space-4)" }}
+      >
+        <TextField
+          label={t.titleLabel}
+          value={title}
+          onChange={(event) => setTitle(event.target.value)}
+          onBlur={() => setTouched(true)}
+          placeholder={t.titlePlaceholder}
+          maxLength={TITLE_MAX}
+          error={titleError}
+          large
+          autoFocus
+          required
+        />
+
+        {suggestions.length > 0 && (
+          <div className="duplicates">
+            <p className="duplicates-title">
+              <Lightbulb size={13} aria-hidden="true" style={{ verticalAlign: -2, marginRight: 4 }} />
+              {t.duplicatesTitle}
+            </p>
+            <p className="duplicates-hint">{t.duplicatesHint}</p>
+            {suggestions.map((item) => (
+              <div className="duplicate-row" key={item.id}>
+                <span className="duplicate-body">
+                  <span className="duplicate-title">{item.title}</span>
+                </span>
+                {item.full ? (
+                  <VoteButton request={item.full} />
+                ) : (
+                  <span className="t-mono text-tertiary">{item.votes}</span>
+                )}
+                <Link href={`/r/${encodeURIComponent(item.id)}`} className="btn btn-secondary btn-sm" onClick={onClose}>
+                  {t.openInstead}
+                </Link>
+              </div>
+            ))}
+          </div>
+        )}
+
+        <div className="field" style={{ marginBottom: 0 }}>
+          <p className="field-label" id="type-label">
+            {t.typeLabel}
+          </p>
+          <div className="type-picker" role="radiogroup" aria-labelledby="type-label">
+            {ITEM_TYPES.map((value) => {
+              const Icon = typeIcons[value];
+              return (
+                <button
+                  key={value}
+                  type="button"
+                  role="radio"
+                  aria-checked={type === value}
+                  className={`type-option type-option-${value}`}
+                  onClick={() => setType(value)}
+                >
+                  <Icon size={16} aria-hidden="true" />
+                  {typeLabels[language][value]}
+                </button>
+              );
+            })}
+          </div>
         </div>
+
+        <button
+          type="button"
+          className="disclosure-trigger"
+          aria-expanded={detailsOpen}
+          aria-controls="new-request-details"
+          onClick={() => setDetailsOpen((value) => !value)}
+        >
+          <ChevronDown size={16} aria-hidden="true" />
+          {detailsOpen ? t.hideDetails : t.addDetails}
+        </button>
+
+        {detailsOpen && (
+          <div className="disclosure-body" id="new-request-details" style={{ paddingTop: 0 }}>
+            <TextAreaField
+              label={t.descriptionLabel}
+              optional={t.optional}
+              value={description}
+              onChange={(event) => setDescription(event.target.value)}
+              placeholder={t.descriptionPlaceholder}
+              maxLength={DESCRIPTION_MAX}
+              rows={5}
+              trailing={
+                descriptionLeft < 500 ? (
+                  <p className={`char-counter${descriptionLeft < 100 ? " char-counter-warn" : ""}`}>
+                    {t.charactersLeft(descriptionLeft)}
+                  </p>
+                ) : undefined
+              }
+            />
+
+            {apps.length > 1 && (
+              <div className="field">
+                <label className="field-label" htmlFor="target-app">
+                  {t.appLabel}
+                </label>
+                <select
+                  id="target-app"
+                  className="select"
+                  value={targetAppId}
+                  onChange={(event) => setTargetAppId(event.target.value)}
+                >
+                  {apps.map((entry) => (
+                    <option key={entry.id} value={entry.id}>
+                      {entry.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            {isAdmin && (
+              <div className="field" style={{ marginBottom: 0 }}>
+                <p className="field-label">{t.visibilityLabel}</p>
+                <SegmentedControl<Visibility>
+                  label={t.visibilityLabel}
+                  value={visibility}
+                  onChange={setVisibility}
+                  options={[
+                    { value: "shared", label: t.shared },
+                    { value: "internal", label: t.internal },
+                  ]}
+                />
+                <p className="field-hint">{t.visibilityHint}</p>
+              </div>
+            )}
+          </div>
+        )}
       </form>
-    </div>
+    </Sheet>
   );
 }

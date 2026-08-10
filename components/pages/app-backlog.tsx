@@ -1,20 +1,27 @@
 "use client";
 
 import {
+  ArrowUpDown,
+  CalendarClock,
   Check,
   ChevronDown,
+  ChevronsUp,
+  ChevronUp,
+  Clock,
   Columns3,
+  History,
   Inbox as InboxIcon,
   Plus,
   Rows3,
   Search,
   SearchX,
   SlidersHorizontal,
+  Tag,
   X,
 } from "lucide-react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   ALL_STATUSES,
   BOARD_STATUSES,
@@ -30,21 +37,29 @@ import {
 import { classes } from "../../lib/format";
 import { priorityLabels, statusLabels, typeLabels } from "../../lib/i18n";
 import { useAppItems, useApps, useErrorMessage, useSetStatus, useSetVisibility } from "../../lib/queries";
-import { StatusDot } from "../badges";
+import { priorityIcons, StatusDot, typeIcons } from "../badges";
 import { useAuth, useLanguage } from "../providers";
 import { NewRequestSheet } from "./new-request";
 import { RequestCard, RequestRow } from "../request-card";
 import { AppIcon, Button, IconButton, SkeletonCard, SkeletonList } from "../ui/primitives";
-import { Menu, MenuLabel, Sheet } from "../ui/overlay";
+import { Menu, MenuItem, MenuLabel, Sheet } from "../ui/overlay";
 import { EmptyState, ErrorState } from "../ui/states";
 import { useToast } from "../ui/toast";
 
 type Author = "all" | "mine" | "others";
 type Vis = "all" | "shared" | "internal";
-type Sort = "votes" | "updated" | "newest" | "oldest";
+type Sort = "votes" | "updated" | "newest" | "oldest" | "priority" | "type";
 type View = "board" | "list";
 
-const SORTS: Sort[] = ["updated", "votes", "newest", "oldest"];
+const SORTS: Sort[] = ["updated", "votes", "newest", "oldest", "priority", "type"];
+const SORT_ICONS: Record<Sort, typeof Clock> = {
+  updated: Clock,
+  votes: ChevronUp,
+  newest: CalendarClock,
+  oldest: History,
+  priority: ChevronsUp,
+  type: Tag,
+};
 
 /** Filter state lives entirely in the URL, so every view is linkable and survives a refresh. */
 function useFilters() {
@@ -146,7 +161,14 @@ function FilterBar({
     (filters.author !== "all" ? 1 : 0) +
     (filters.vis !== "all" ? 1 : 0) +
     (filters.q ? 1 : 0);
-  const sortLabels = { updated: t.sortUpdated, votes: t.sortVotes, newest: t.sortNewest, oldest: t.sortOldest };
+  const sortLabels = {
+    updated: t.sortUpdated,
+    votes: t.sortVotes,
+    newest: t.sortNewest,
+    oldest: t.sortOldest,
+    priority: t.sortPriority,
+    type: t.sortType,
+  };
   const authorOptions: [Author, string][] = [
     ["all", t.authorAll],
     ["mine", t.authorMine],
@@ -159,32 +181,60 @@ function FilterBar({
   ];
 
   // Individually removable pills for whatever is currently active, so the effect of each
-  // filter is visible without opening the sheet. Only rendered when there's something to show.
-  const activePills: { key: string; label: string; onRemove: () => void }[] = [
-    ...(filters.q ? [{ key: "q", label: `"${filters.q}"`, onRemove: () => setDraft("") }] : []),
-    ...filters.types.map((type) => ({
-      key: `type-${type}`,
-      label: typeLabels[language][type],
-      onRemove: () => filters.update({ type: toggleInList(filters.types, type).join(",") || null }),
-    })),
+  // filter is visible without opening the sheet. Type/priority/status pills borrow the same
+  // tinted-chip look their data uses everywhere else (request cards, board columns) instead of
+  // a uniform grey tag, so the pill itself says what it does rather than just naming it.
+  const activePills: { key: string; label: string; className: string; icon?: ReactNode; onRemove: () => void }[] = [
+    ...(filters.q ? [{ key: "q", label: `"${filters.q}"`, className: "chip-neutral", onRemove: () => setDraft("") }] : []),
+    ...filters.types.map((type) => {
+      const Icon = typeIcons[type];
+      return {
+        key: `type-${type}`,
+        label: typeLabels[language][type],
+        className: `chip-${type}`,
+        icon: <Icon size={12} aria-hidden="true" />,
+        onRemove: () => filters.update({ type: toggleInList(filters.types, type).join(",") || null }),
+      };
+    }),
     ...filters.statuses.map((status) => ({
       key: `status-${status}`,
       label: statusLabels[language][status],
+      className: `chip-status-${status}`,
+      icon: <StatusDot status={status} />,
       onRemove: () => filters.update({ status: toggleInList(filters.statuses, status).join(",") || null }),
     })),
-    ...filters.priorities.map((priority) => ({
-      key: `priority-${priority}`,
-      label: priorityLabels[language][priority],
-      onRemove: () => filters.update({ priority: toggleInList(filters.priorities, priority).join(",") || null }),
-    })),
+    ...filters.priorities.map((priority) => {
+      const Icon = priorityIcons[priority];
+      return {
+        key: `priority-${priority}`,
+        label: priorityLabels[language][priority],
+        className: `chip-priority-${priority}`,
+        icon: <Icon size={12} aria-hidden="true" />,
+        onRemove: () => filters.update({ priority: toggleInList(filters.priorities, priority).join(",") || null }),
+      };
+    }),
     ...(filters.author !== "all"
-      ? [{ key: "author", label: authorOptions.find(([v]) => v === filters.author)![1], onRemove: () => filters.update({ author: null }) }]
+      ? [
+          {
+            key: "author",
+            label: authorOptions.find(([v]) => v === filters.author)![1],
+            className: "chip-neutral",
+            onRemove: () => filters.update({ author: null }),
+          },
+        ]
       : []),
     ...(filters.vis !== "all"
-      ? [{ key: "vis", label: visOptions.find(([v]) => v === filters.vis)![1], onRemove: () => filters.update({ vis: null }) }]
+      ? [
+          {
+            key: "vis",
+            label: visOptions.find(([v]) => v === filters.vis)![1],
+            className: "chip-neutral",
+            onRemove: () => filters.update({ vis: null }),
+          },
+        ]
       : []),
     ...(filters.discarded
-      ? [{ key: "discarded", label: t.showDiscarded, onRemove: () => filters.update({ discarded: null }) }]
+      ? [{ key: "discarded", label: t.showDiscarded, className: "chip-neutral", onRemove: () => filters.update({ discarded: null }) }]
       : []),
   ];
 
@@ -211,6 +261,42 @@ function FilterBar({
             </span>
           )}
         </div>
+
+        <Menu
+          label={t.sortBy}
+          trigger={(props) => (
+            <Button
+              {...props}
+              size="sm"
+              variant={filters.sort !== "updated" ? "primary" : "secondary"}
+              icon={<ArrowUpDown size={15} aria-hidden="true" />}
+            >
+              <span className="sr-only-mobile">{sortLabels[filters.sort]}</span>
+            </Button>
+          )}
+        >
+          {(close) => (
+            <>
+              <MenuLabel>{t.sortBy}</MenuLabel>
+              {SORTS.map((sort) => {
+                const Icon = SORT_ICONS[sort];
+                return (
+                  <MenuItem
+                    key={sort}
+                    icon={<Icon size={15} aria-hidden="true" />}
+                    onClick={() => {
+                      filters.update({ sort: sort === "updated" ? null : sort });
+                      close();
+                    }}
+                  >
+                    {sortLabels[sort]}
+                    {filters.sort === sort && <Check size={14} className="dropdown-check" aria-hidden="true" />}
+                  </MenuItem>
+                );
+              })}
+            </>
+          )}
+        </Menu>
 
         <Button
           size="sm"
@@ -253,10 +339,11 @@ function FilterBar({
                 <button
                   key={pill.key}
                   type="button"
-                  className="chip chip-neutral chip-removable"
+                  className={classes("chip", pill.className, "chip-removable")}
                   onClick={pill.onRemove}
                   aria-label={t.removeFilter(pill.label)}
                 >
+                  {pill.icon}
                   {pill.label}
                   <X size={11} aria-hidden="true" />
                 </button>
@@ -275,41 +362,25 @@ function FilterBar({
       <Sheet open={sheetOpen} onClose={() => setSheetOpen(false)} title={t.filtersTitle} closeLabel={t.close}>
         <div className="filter-sections">
           <div className="filter-cell">
-            <p className="filter-cell-label" id="filter-sort">
-              {t.sortBy}
-            </p>
-            <div className="filter-chips" role="group" aria-labelledby="filter-sort">
-              {SORTS.map((sort) => (
-                <button
-                  key={sort}
-                  type="button"
-                  className="filter-chip"
-                  aria-pressed={filters.sort === sort}
-                  onClick={() => filters.update({ sort: sort === "updated" ? null : sort })}
-                >
-                  {filters.sort === sort && <Check size={13} aria-hidden="true" />}
-                  {sortLabels[sort]}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <div className="filter-cell">
             <p className="filter-cell-label" id="filter-type">
               {t.type}
             </p>
             <div className="filter-chips" role="group" aria-labelledby="filter-type">
-              {ITEM_TYPES.map((type) => (
-                <button
-                  key={type}
-                  type="button"
-                  className="filter-chip"
-                  aria-pressed={filters.types.includes(type)}
-                  onClick={() => filters.update({ type: toggleInList(filters.types, type).join(",") || null })}
-                >
-                  {typeLabels[language][type]}
-                </button>
-              ))}
+              {ITEM_TYPES.map((type) => {
+                const Icon = typeIcons[type];
+                return (
+                  <button
+                    key={type}
+                    type="button"
+                    className={classes("filter-swatch", `chip-${type}`)}
+                    aria-pressed={filters.types.includes(type)}
+                    onClick={() => filters.update({ type: toggleInList(filters.types, type).join(",") || null })}
+                  >
+                    <Icon size={14} aria-hidden="true" />
+                    {typeLabels[language][type]}
+                  </button>
+                );
+              })}
             </div>
           </div>
 
@@ -318,17 +389,21 @@ function FilterBar({
               {t.priority}
             </p>
             <div className="filter-chips" role="group" aria-labelledby="filter-priority">
-              {ITEM_PRIORITIES.map((priority) => (
-                <button
-                  key={priority}
-                  type="button"
-                  className="filter-chip"
-                  aria-pressed={filters.priorities.includes(priority)}
-                  onClick={() => filters.update({ priority: toggleInList(filters.priorities, priority).join(",") || null })}
-                >
-                  {priorityLabels[language][priority]}
-                </button>
-              ))}
+              {ITEM_PRIORITIES.map((priority) => {
+                const Icon = priorityIcons[priority];
+                return (
+                  <button
+                    key={priority}
+                    type="button"
+                    className={classes("filter-swatch", `chip-priority-${priority}`)}
+                    aria-pressed={filters.priorities.includes(priority)}
+                    onClick={() => filters.update({ priority: toggleInList(filters.priorities, priority).join(",") || null })}
+                  >
+                    <Icon size={14} aria-hidden="true" />
+                    {priorityLabels[language][priority]}
+                  </button>
+                );
+              })}
             </div>
           </div>
 
@@ -342,10 +417,11 @@ function FilterBar({
                   <button
                     key={status}
                     type="button"
-                    className="filter-chip"
+                    className={classes("filter-swatch", `chip-status-${status}`)}
                     aria-pressed={filters.statuses.includes(status)}
                     onClick={() => filters.update({ status: toggleInList(filters.statuses, status).join(",") || null })}
                   >
+                    <StatusDot status={status} />
                     {statusLabels[language][status]}
                   </button>
                 ))}
@@ -438,6 +514,12 @@ function applyFilters(
         return b.createdAt - a.createdAt;
       case "oldest":
         return a.createdAt - b.createdAt;
+      case "priority":
+        return (
+          ITEM_PRIORITIES.indexOf(a.priority) - ITEM_PRIORITIES.indexOf(b.priority) || b.updatedAt - a.updatedAt
+        );
+      case "type":
+        return ITEM_TYPES.indexOf(a.type) - ITEM_TYPES.indexOf(b.type) || b.updatedAt - a.updatedAt;
       default:
         return b.updatedAt - a.updatedAt;
     }
@@ -579,8 +661,10 @@ export function AppBacklogPage({ appId }: { appId: string }) {
     !!filters.q ||
     filters.types.length > 0 ||
     filters.statuses.length > 0 ||
+    filters.priorities.length > 0 ||
     filters.author !== "all" ||
-    filters.vis !== "all";
+    filters.vis !== "all" ||
+    filters.discarded;
 
   return (
     <div className="page">

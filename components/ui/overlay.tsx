@@ -82,6 +82,13 @@ function useFocusTrap(container: RefObject<HTMLElement | null>, open: boolean, o
  * nothing else has navigated in the meantime — if the overlay is closing because a real
  * navigation already happened (e.g. delete-then-redirect), history.state no longer belongs to
  * us and we leave it alone rather than fight that navigation.
+ *
+ * Controls opened inside the overlay (e.g. filter chips) may call `router.replace()` while it's
+ * open, which rewrites this same history entry's URL in place rather than pushing a new one. If
+ * that happened, popping the entry via `history.back()` would silently discard those changes by
+ * landing back on the URL the entry had when it was pushed. So: only go back if the URL is still
+ * what it was at open time; otherwise just strip our marker in place, leaving the entry (and its
+ * updated URL) intact.
  */
 function useHistoryBackToClose(open: boolean, onClose: () => void) {
   const onCloseRef = useRef(onClose);
@@ -92,6 +99,7 @@ function useHistoryBackToClose(open: boolean, onClose: () => void) {
   useEffect(() => {
     if (!open || typeof window === "undefined") return;
 
+    const openedAtHref = window.location.href;
     window.history.pushState({ vinextOverlay: true }, "");
     let consumedByPopstate = false;
 
@@ -106,8 +114,14 @@ function useHistoryBackToClose(open: boolean, onClose: () => void) {
 
     return () => {
       window.removeEventListener("popstate", onPopState);
-      if (!consumedByPopstate && (window.history.state as { vinextOverlay?: boolean } | null)?.vinextOverlay) {
+      if (consumedByPopstate) return;
+      const state = window.history.state as { vinextOverlay?: boolean } | null;
+      if (!state?.vinextOverlay) return;
+      if (window.location.href === openedAtHref) {
         window.history.back();
+      } else {
+        const { vinextOverlay: _vinextOverlay, ...rest } = state;
+        window.history.replaceState(rest, "");
       }
     };
   }, [open]);

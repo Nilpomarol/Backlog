@@ -36,7 +36,7 @@ function ChecklistSection({ request, canManage }: { request: RequestDetail; canM
     const title = draft.trim();
     if (!title) return;
     setDraft("");
-    create.mutate({ requestId: request.id, title }, { onError });
+    create.mutate({ id: crypto.randomUUID(), requestId: request.id, title }, { onError });
   }
 
   return (

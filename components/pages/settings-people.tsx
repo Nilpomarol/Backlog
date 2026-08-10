@@ -83,7 +83,7 @@ export function PeopleSettingsPage() {
     event.preventDefault();
     if (!email.trim() || name.trim().length < 2) return;
     invite.mutate(
-      { email: email.trim(), name: name.trim(), role },
+      { id: crypto.randomUUID(), email: email.trim(), name: name.trim(), role },
       {
         onError,
         onSuccess: () => {

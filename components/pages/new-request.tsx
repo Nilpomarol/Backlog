@@ -102,13 +102,18 @@ export function NewRequestSheet({
     return { value, label: effortLabels[language][value], icon: <Icon size={14} aria-hidden="true" /> };
   });
 
-  async function submit(event: FormEvent) {
+  function submit(event: FormEvent) {
     event.preventDefault();
     setTouched(true);
     if (trimmedTitle.length < TITLE_MIN) return;
 
-    try {
-      const created = await createRequest.mutateAsync({
+    // The id is generated here rather than returned by the server, so the optimistic insert
+    // (see useCreateRequest) already has its real id — navigation doesn't wait on a round trip,
+    // online or off.
+    const id = crypto.randomUUID();
+    createRequest.mutate(
+      {
+        id,
         appId: targetAppId,
         title: trimmedTitle,
         description: description.trim(),
@@ -116,13 +121,12 @@ export function NewRequestSheet({
         priority: isAdmin ? priority : "none",
         effort: isAdmin ? effort : "unknown",
         visibility,
-      });
-      toast(t.toastCreated);
-      onClose();
-      router.push(`/r/${encodeURIComponent(created.id)}`);
-    } catch (error) {
-      toast(describeError(error), { tone: "error" });
-    }
+      },
+      { onError: (error) => toast(describeError(error), { tone: "error" }) },
+    );
+    toast(t.toastCreated);
+    onClose();
+    router.push(`/r/${encodeURIComponent(id)}`);
   }
 
   return (

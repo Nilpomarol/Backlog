@@ -140,7 +140,7 @@ export function AppsSettingsPage() {
     const payload = { name: name.trim(), logoUrl: logoUrl.trim() || null, description: description.trim() };
     const done = { onError, onSuccess: () => { toast(t.toastAppSaved); closeForm(); } };
     if (editingId) updateApp.mutate({ id: editingId, ...payload }, done);
-    else createApp.mutate(payload, done);
+    else createApp.mutate({ id: crypto.randomUUID(), ...payload }, done);
   }
 
   /**

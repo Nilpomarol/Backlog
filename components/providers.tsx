@@ -1,6 +1,8 @@
 "use client";
 
 import { QueryClient, QueryClientProvider, useQuery, useQueryClient } from "@tanstack/react-query";
+import { persistQueryClient } from "@tanstack/query-persist-client-core";
+import { createAsyncStoragePersister } from "@tanstack/query-async-storage-persister";
 import type { User as FirebaseUser } from "firebase/auth";
 import {
   createContext,
@@ -8,12 +10,15 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   useSyncExternalStore,
   type ReactNode,
 } from "react";
+import { setActiveRequester } from "../lib/active-requester";
 import { ApiError, createRequester, type Requester } from "../lib/api";
 import type { Profile } from "../lib/domain";
+import { idbStorage } from "../lib/idb-storage";
 import {
   DEFAULT_LANGUAGE,
   LANGUAGE_STORAGE_KEY,
@@ -21,6 +26,7 @@ import {
   isLanguage,
   type Language,
 } from "../lib/i18n";
+import { registerOfflineMutationDefaults } from "../lib/offline-mutations";
 import { ToastProvider } from "./ui/toast";
 
 // --- Language -------------------------------------------------------------------------------
@@ -208,6 +214,36 @@ function AuthProvider({ children }: { children: ReactNode }) {
             ? "ready"
             : "loading";
 
+  // Restores cached queries and paused mutations from IndexedDB so boards/cards already seen —
+  // and edits made while offline — survive a reload. Done imperatively (rather than via
+  // <PersistQueryClientProvider>) since that component crashes under this app's RSC/multi-
+  // environment Vite setup; a plain effect sidesteps it since effects never run during SSR.
+  const restoredRef = useRef<Promise<void>>(undefined);
+  useEffect(() => {
+    const [unsubscribe, restored] = persistQueryClient({
+      queryClient,
+      persister: createAsyncStoragePersister({ storage: idbStorage }),
+      maxAge: 7 * 24 * 60 * 60_000,
+      buster: "v1",
+    });
+    restoredRef.current = restored;
+    return unsubscribe;
+  }, [queryClient]);
+
+  // Offline-queued mutations need the *current* requester, not the one captured when they were
+  // first called (which no longer exists after a reload) — see lib/active-requester.ts.
+  useEffect(() => {
+    setActiveRequester(request);
+  }, [request]);
+
+  // Paused mutations already resume automatically the moment the browser comes back online (a
+  // built-in QueryClient behaviour). This covers the one gap that doesn't: a reload that lands
+  // already online, where no further "online" transition will ever fire to trigger it.
+  useEffect(() => {
+    if (status !== "ready") return;
+    void restoredRef.current?.then(() => queryClient.resumePausedMutations());
+  }, [status, queryClient]);
+
   const value = useMemo<AuthContextValue>(
     () => ({
       status,
@@ -239,22 +275,25 @@ function ToastLayer({ children }: { children: ReactNode }) {
 }
 
 export function Providers({ children }: { children: ReactNode }) {
-  const [queryClient] = useState(
-    () =>
-      new QueryClient({
-        defaultOptions: {
-          queries: {
-            staleTime: 30_000,
-            refetchOnWindowFocus: false,
-            retry: (failureCount, error) => {
-              // Never retry a decision the server already made.
-              if (error instanceof ApiError && error.status >= 400 && error.status < 500) return false;
-              return failureCount < 2;
-            },
+  const [queryClient] = useState(() => {
+    const client = new QueryClient({
+      defaultOptions: {
+        queries: {
+          staleTime: 30_000,
+          refetchOnWindowFocus: false,
+          retry: (failureCount, error) => {
+            // Never retry a decision the server already made.
+            if (error instanceof ApiError && error.status >= 400 && error.status < 500) return false;
+            return failureCount < 2;
           },
         },
-      }),
-  );
+      },
+    });
+    // Registered before any restore can happen (see AuthProvider), so a mutation resumed from
+    // IndexedDB — its original closure long gone — still knows how to execute.
+    registerOfflineMutationDefaults(client);
+    return client;
+  });
 
   return (
     <QueryClientProvider client={queryClient}>

@@ -19,6 +19,10 @@ export type VotableRequest = {
 /**
  * Optimistic vote control. A user who cannot vote sees the control disabled *with a reason*
  * rather than hidden — its absence would read as a missing feature.
+ *
+ * Admins triage by priority, not by voting for their own requests, so votes are just a number
+ * they read — not a button they can press. Rendering a plain stat (no button semantics) instead
+ * of a disabled button keeps that distinction honest rather than looking like a blocked action.
  */
 export function VoteButton({ request, size = "sm" }: { request: VotableRequest; size?: "sm" | "lg" }) {
   const t = useT();
@@ -26,6 +30,18 @@ export function VoteButton({ request, size = "sm" }: { request: VotableRequest; 
   const vote = useVote();
   const { toast } = useToast();
   const describeError = useErrorMessage();
+
+  if (profile?.role === "admin") {
+    return (
+      <span
+        className={classes("vote-stat", size === "lg" && "vote-stat-lg")}
+        aria-label={`${request.votes} ${t.votes}`}
+      >
+        <ChevronUp size={size === "lg" ? 15 : 13} aria-hidden="true" />
+        {request.votes}
+      </span>
+    );
+  }
 
   const blocked = voteBlockedReason(profile, request);
   const reason = blocked === "own" ? t.voteOwnReason : blocked === "internal" ? t.voteInternalReason : undefined;

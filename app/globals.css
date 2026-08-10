@@ -300,6 +300,10 @@ ul, ol { margin: 0; padding: 0; list-style: none; }
 }
 .page-narrow { max-width: 960px; }
 .page-prose { max-width: 820px; }
+/* Wide enough for the detail page's two-column grid (prose-width main column + a 300px
+   properties rail) to actually use the extra desktop width instead of just centering
+   .page-prose with empty margins either side. */
+.page-detail { max-width: 1100px; }
 @media (min-width: 768px) { .page { padding: var(--space-6) var(--space-6) var(--space-12); } }
 
 .page-header { margin-bottom: var(--space-5); }
@@ -773,13 +777,27 @@ ul, ol { margin: 0; padding: 0; list-style: none; }
 .vote-btn:disabled:active { transform: none; }
 
 .vote-btn-lg {
-  height: 44px; padding: 0 var(--space-4); gap: var(--space-2);
-  font-size: 15px;
+  height: 34px; padding: 0 var(--space-3); gap: 6px;
+  font-size: 13px;
 }
 /* Only 28px even on touch, not the usual 44px floor — a 44px pill was blowing up the whole
-   card footer on mobile. The lg variant (detail page's standalone vote panel) keeps the full
-   touch minimum since it isn't fighting for space inside a dense card row. */
-@media (pointer: coarse) { .vote-btn { min-height: 28px; } .vote-btn-lg { min-height: 48px; } }
+   card footer on mobile. The lg variant (detail page's properties panel) still gets a taller
+   touch target since it isn't fighting for space inside a dense card row, just not the old
+   full-height CTA size. */
+@media (pointer: coarse) { .vote-btn { min-height: 28px; } .vote-btn-lg { min-height: 40px; } }
+
+/* Read-only vote count for admins — same pill shape as the button so the number reads
+   consistently everywhere, but no hover/press affordance: it's data, not an action. */
+.vote-stat {
+  display: inline-flex; align-items: center; justify-content: center;
+  gap: 4px; flex-shrink: 0;
+  height: 22px; padding: 0 8px;
+  border: 1px solid var(--border-subtle); border-radius: var(--radius-full);
+  background: var(--surface-sunken); color: var(--text-secondary);
+  font-family: var(--font-mono); font-size: 12px; font-weight: 700; line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+.vote-stat-lg { height: 34px; padding: 0 var(--space-3); gap: 6px; font-size: 13px; }
 
 /* ==========================================================================
    Board
@@ -987,31 +1005,35 @@ ul, ol { margin: 0; padding: 0; list-style: none; }
 .bulk-bar .btn-ghost:hover:not(:disabled) { background: rgb(255 255 255 / 12%); color: var(--text-inverse); }
 
 /* ==========================================================================
-   Status stepper (admin workflow control)
-   ========================================================================== */
-
-.stepper { display: flex; flex-wrap: wrap; gap: var(--space-1); }
-.stepper-step {
-  display: inline-flex; align-items: center; gap: 6px;
-  height: 34px; padding: 0 var(--space-3);
-  border: 1px solid var(--border-subtle); border-radius: var(--radius-full);
-  background: var(--surface); color: var(--text-secondary);
-  font-size: 13px; font-weight: 500;
-  transition: border-color var(--duration-fast) var(--ease-in), background var(--duration-fast) var(--ease-in);
-}
-.stepper-step:hover:not(:disabled):not([aria-current="true"]) { background: var(--surface-sunken); color: var(--text-primary); }
-.stepper-step[aria-current="true"] {
-  background: var(--surface-sunken); border-color: var(--border-control);
-  color: var(--text-primary); font-weight: 600;
-}
-.stepper-step:disabled { cursor: default; }
-@media (pointer: coarse) { .stepper-step { min-height: 40px; } }
-
-/* ==========================================================================
    Request detail
    ========================================================================== */
 
-.detail-header { display: flex; flex-direction: column; gap: var(--space-3); margin-bottom: var(--space-5); }
+/* The phone and desktop detail pages are two separate components (see
+   components/pages/request-detail.tsx vs request-detail-mobile.tsx) rendered side by side and
+   toggled with plain display:none — same trick app-shell.tsx uses for the sidebar vs. the
+   tabbar. Nothing here is reused across the breakpoint by reflowing one DOM tree; each class
+   below belongs to exactly one of the two files. */
+.detail-viewport-desktop { display: none; }
+@media (min-width: 1024px) { .detail-viewport-desktop { display: block; } }
+.detail-viewport-mobile { display: block; }
+@media (min-width: 1024px) { .detail-viewport-mobile { display: none; } }
+
+/* --- Desktop: a sticky right rail beside the header, with the description/subtasks body
+   running full-height alongside it. Always laid out as a grid — the viewport toggle above is
+   what keeps this off small screens, so there's no separate narrow-screen fallback to maintain
+   here. --- */
+.detail-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 300px;
+  grid-template-areas: "header sidebar" "body sidebar";
+  column-gap: var(--space-8); row-gap: var(--space-6);
+  align-items: start;
+}
+.detail-grid-header { grid-area: header; }
+.detail-grid-sidebar { grid-area: sidebar; min-width: 0; position: sticky; top: var(--space-6); }
+.detail-grid-body { grid-area: body; min-width: 0; }
+
+.detail-header { display: flex; flex-direction: column; gap: var(--space-3); }
 .detail-flags { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
 .detail-title { font-size: 24px; line-height: 31px; font-weight: 600; letter-spacing: -0.02em; }
 @media (min-width: 768px) { .detail-title { font-size: 28px; line-height: 35px; } }
@@ -1020,6 +1042,7 @@ ul, ol { margin: 0; padding: 0; list-style: none; }
   font-size: 13px; color: var(--text-secondary);
 }
 .detail-section { padding: var(--space-5) 0; border-top: 1px solid var(--border-subtle); }
+.detail-section:first-child { padding-top: 0; border-top: none; }
 .detail-section-title {
   display: flex; align-items: center; justify-content: space-between; gap: var(--space-3);
   font-size: 13px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase;
@@ -1027,12 +1050,70 @@ ul, ol { margin: 0; padding: 0; list-style: none; }
 }
 .detail-description { font-size: 15px; line-height: 24px; white-space: pre-wrap; max-width: var(--prose-max); }
 .detail-description-empty { color: var(--text-tertiary); font-style: italic; }
-.vote-panel {
-  display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap;
-  padding: var(--space-4); background: var(--surface);
-  border: 1px solid var(--border-subtle); border-radius: var(--radius-lg);
+
+/* --- Properties panel: the sidebar's one card, a stack of label/value rows replacing the old
+   giant vote panel and admin-only status/priority steppers. Every row follows the same shape
+   so status, priority, effort, type and visibility all read as the same kind of thing. --- */
+.properties-panel {
+  display: flex; flex-direction: column;
+  background: var(--surface); border: 1px solid var(--border-subtle); border-radius: var(--radius-lg);
+  padding: 0 var(--space-4);
 }
-.vote-panel-reason { font-size: 13px; color: var(--text-tertiary); }
+.properties-panel-title {
+  padding: var(--space-3) 0 var(--space-2);
+  font-size: 11px; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase;
+  color: var(--text-tertiary);
+}
+.property-row {
+  display: flex; align-items: center; justify-content: space-between; gap: var(--space-3);
+  padding: var(--space-3) 0; border-top: 1px solid var(--border-subtle);
+  min-height: 34px;
+}
+.properties-panel-title + .property-row { border-top: none; }
+.property-label { font-size: 13px; color: var(--text-tertiary); flex-shrink: 0; }
+.property-value { display: flex; align-items: center; justify-content: flex-end; gap: var(--space-2); min-width: 0; }
+.property-value-text {
+  font-size: 13px; font-weight: 500; color: var(--text-primary); text-align: right;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.property-hint { padding: 0 0 var(--space-3); margin-top: calc(var(--space-2) * -1); font-size: 12px; color: var(--text-tertiary); text-align: right; }
+.properties-panel-danger { padding: var(--space-3) 0 var(--space-4); border-top: 1px solid var(--border-subtle); }
+/* Reused inside the phone page's bottom sheet (see request-detail-mobile.tsx) — the sheet
+   already supplies its own card chrome and heading, so the panel itself goes borderless and
+   the first row loses the divider it'd otherwise share with a properties-panel-title above it. */
+.properties-panel-sheet { border: none; padding: 0; }
+.properties-panel-sheet .property-row:first-child { border-top: none; padding-top: 0; }
+
+/* --- Compact dropdown: a property row's value, not a form field — pill-sized trigger, popover
+   sized to its content instead of the (tiny) trigger's own width. --- */
+.dropdown-trigger-compact {
+  width: auto; min-height: 30px; padding: 3px var(--space-2) 3px 10px;
+  border-radius: var(--radius-full); font-size: 13px; font-weight: 600;
+  border-color: var(--border-subtle);
+}
+.dropdown-trigger-compact:hover { background: var(--surface-sunken); }
+.dropdown-trigger-compact:disabled { cursor: default; opacity: 1; border-color: transparent; background: none; }
+.dropdown-panel-auto { left: auto; right: 0; width: auto; min-width: 190px; }
+@media (pointer: coarse) { .dropdown-trigger-compact { min-height: 40px; } }
+
+/* --- Phone detail page (request-detail-mobile.tsx): kept tight on purpose — voting rides
+   along on the byline instead of claiming its own row, and everything admins triage
+   (status/priority/effort/type/visibility/app) is a supporting fact, not the point of the page,
+   so it collapses into a single tappable summary card that opens a bottom sheet instead of
+   occupying scroll space up front. --- */
+.mdetail-byline-vote { margin-left: auto; flex-shrink: 0; }
+.mdetail-properties-trigger {
+  display: flex; align-items: center; gap: var(--space-2); width: 100%; min-height: 44px;
+  padding: var(--space-2) var(--space-3); margin-top: var(--space-3);
+  background: var(--surface); border: 1px solid var(--border-subtle); border-radius: var(--radius-lg);
+  text-align: left; transition: background var(--duration-fast) var(--ease-in);
+}
+.mdetail-properties-trigger:active { background: var(--surface-sunken); }
+.mdetail-properties-chips { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; flex: 1; min-width: 0; }
+.mdetail-properties-chevron { flex-shrink: 0; color: var(--text-tertiary); }
+/* Mobile-only: the desktop rhythm (20px section padding) has room to spare that a phone
+   screen doesn't — tighten it just here rather than shrinking .detail-section everywhere. */
+.detail-viewport-mobile .detail-section { padding: var(--space-4) 0; }
 
 /* --- Inline editable fields --- */
 .editable {
@@ -1072,6 +1153,10 @@ ul, ol { margin: 0; padding: 0; list-style: none; }
 /* Sits above the row's card-link overlay so the delete button stays clickable, same as
    .card-overlay is used elsewhere. */
 .subtask-actions { position: relative; z-index: 1; display: flex; align-items: center; gap: 2px; flex-shrink: 0; }
+.section-empty {
+  display: flex; align-items: center; gap: 6px;
+  font-size: 13px; color: var(--text-tertiary);
+}
 .subtask-add { display: flex; flex-direction: column; gap: var(--space-2); margin-top: var(--space-3); }
 .subtask-add-row { display: flex; align-items: center; gap: var(--space-2); }
 .subtask-add .disclosure-trigger { margin-top: 0; padding-top: var(--space-2); }

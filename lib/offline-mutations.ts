@@ -22,6 +22,7 @@ export const mutationKeys = {
   updateRequest: ["offline-mutation", "updateRequest"],
   setStatus: ["offline-mutation", "setStatus"],
   setPriority: ["offline-mutation", "setPriority"],
+  setEffort: ["offline-mutation", "setEffort"],
   setVisibility: ["offline-mutation", "setVisibility"],
   deleteRequest: ["offline-mutation", "deleteRequest"],
   updateChecklistItem: ["offline-mutation", "updateChecklistItem"],
@@ -73,6 +74,14 @@ export async function setStatusMutationFn({ id, ...changes }: VersionedStatusInp
 export type VersionedPriorityInput = { id: string; priority: ItemPriority; baseUpdatedAt?: number; updatedAt?: number };
 export async function setPriorityMutationFn({ id, ...changes }: VersionedPriorityInput) {
   await getActiveRequester()(`/items/${encodeURIComponent(id)}/priority`, {
+    method: "PATCH",
+    body: JSON.stringify(changes),
+  });
+}
+
+export type VersionedEffortInput = { id: string; effort: ItemEffort; baseUpdatedAt?: number; updatedAt?: number };
+export async function setEffortMutationFn({ id, ...changes }: VersionedEffortInput) {
+  await getActiveRequester()(`/items/${encodeURIComponent(id)}/effort`, {
     method: "PATCH",
     body: JSON.stringify(changes),
   });
@@ -218,6 +227,7 @@ export function registerOfflineMutationDefaults(client: QueryClient) {
   client.setMutationDefaults(mutationKeys.updateRequest, { ...durable, mutationFn: updateRequestMutationFn });
   client.setMutationDefaults(mutationKeys.setStatus, { ...durable, mutationFn: setStatusMutationFn });
   client.setMutationDefaults(mutationKeys.setPriority, { ...durable, mutationFn: setPriorityMutationFn });
+  client.setMutationDefaults(mutationKeys.setEffort, { ...durable, mutationFn: setEffortMutationFn });
   client.setMutationDefaults(mutationKeys.setVisibility, { ...durable, mutationFn: setVisibilityMutationFn });
   client.setMutationDefaults(mutationKeys.deleteRequest, { ...durable, mutationFn: deleteRequestMutationFn });
   client.setMutationDefaults(mutationKeys.updateChecklistItem, { ...durable, mutationFn: updateChecklistItemMutationFn });

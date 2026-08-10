@@ -587,6 +587,11 @@ ul, ol { margin: 0; padding: 0; list-style: none; }
 .chip-priority-medium { background: var(--priority-medium-bg); color: var(--priority-medium-text); }
 .chip-priority-low    { background: var(--priority-low-bg);    color: var(--priority-low-text); }
 .chip-priority-none   { background: var(--priority-none-bg);   color: var(--priority-none-text); }
+.chip-status-backlog     { background: var(--status-backlog-bg);     color: var(--status-backlog-text); }
+.chip-status-in_progress { background: var(--status-in_progress-bg); color: var(--status-in_progress-text); }
+.chip-status-in_review   { background: var(--status-in_review-bg);   color: var(--status-in_review-text); }
+.chip-status-done        { background: var(--status-done-bg);        color: var(--status-done-text); }
+.chip-status-discarded   { background: var(--status-discarded-bg);   color: var(--status-discarded-text); }
 .chip-logo {
   width: 14px; height: 14px; margin-left: -2px; flex-shrink: 0; overflow: hidden;
   border-radius: 3px; display: inline-grid; place-items: center; line-height: 1;
@@ -897,12 +902,16 @@ ul, ol { margin: 0; padding: 0; list-style: none; }
 .filter-active-clear { flex-shrink: 0; font-size: 12px; font-weight: 600; color: var(--text-secondary); }
 .filter-active-clear:hover { color: var(--action); text-decoration: underline; }
 
+/* Removable pills keep whatever tint their data carries (type/priority/status) rather than
+   flattening to grey on hover — only the border and the close icon respond, so the colour that
+   identifies the filter stays legible right up to the click that removes it. */
 .chip-removable {
   cursor: pointer; border: 1px solid transparent;
-  transition: background var(--duration-fast) var(--ease-in), border-color var(--duration-fast) var(--ease-in);
+  transition: border-color var(--duration-fast) var(--ease-in);
 }
-.chip-removable:hover { background: var(--surface-hover); border-color: var(--border-control); }
-.chip-removable svg:last-child { opacity: 0.7; }
+.chip-removable:hover { border-color: currentColor; }
+.chip-removable svg:last-child { opacity: 0.7; transition: opacity var(--duration-fast) var(--ease-in); }
+.chip-removable:hover svg:last-child { opacity: 1; }
 
 /* --- Filters sheet: sections of chip groups, stacked (the sheet is narrow by design) --- */
 .filter-sections { display: flex; flex-direction: column; gap: var(--space-5); }
@@ -925,6 +934,24 @@ ul, ol { margin: 0; padding: 0; list-style: none; }
   background: var(--action); border-color: var(--action); color: var(--text-inverse); font-weight: 600;
 }
 @media (pointer: coarse) { .filter-chip { min-height: 44px; } }
+
+/* Type/priority/status pickers: same tinted-chip colours as the badges those values render as
+   everywhere else (cards, board columns), so choosing a filter looks like choosing that data
+   instead of a generic option. Every swatch stays at the badge's own audited contrast at rest
+   (no dimming, unlike a typical muted/active toggle) — selection is signalled by a ring instead,
+   so legibility of the unselected options never trades off against showing what's picked. */
+.filter-swatch {
+  display: inline-flex; align-items: center; gap: 6px;
+  height: 32px; padding: 0 var(--space-3);
+  border-radius: var(--radius-full); border: 1.5px solid transparent;
+  font-size: 13px; font-weight: 600; white-space: nowrap;
+  transition: border-color var(--duration-fast) var(--ease-in), box-shadow var(--duration-fast) var(--ease-in);
+}
+.filter-swatch:hover { border-color: currentColor; }
+.filter-swatch[aria-pressed="true"] {
+  border-color: currentColor; box-shadow: 0 0 0 1px currentColor;
+}
+@media (pointer: coarse) { .filter-swatch { min-height: 44px; } }
 
 .filter-toggle-row {
   display: flex; align-items: center; gap: var(--space-3);

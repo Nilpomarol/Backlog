@@ -23,7 +23,13 @@ const itemStatus = z.enum(["backlog", "in_progress", "in_review", "done", "disca
 const itemPriority = z.enum(["urgent", "high", "medium", "low", "none"]);
 const itemEffort = z.enum(["small", "medium", "large", "unknown"]);
 const itemVisibility = z.enum(["shared", "internal"]);
+// Lets a client that generated its own id offline (for an instant optimistic insert) hand it
+// straight to the server instead of getting a different one back — same format `x-request-id`
+// already accepts above. INSERT ... ON CONFLICT(id) DO NOTHING then makes the create idempotent,
+// so a mutation resumed twice (e.g. after a dropped response) can't produce a duplicate row.
+const clientId = z.string().regex(/^[a-zA-Z0-9_-]{8,80}$/);
 const createItemSchema = z.object({
+  id: clientId.optional(),
   appId: z.string().min(1).max(80),
   title: z.string().trim().min(3).max(160),
   description: z.string().trim().max(4000).optional().default(""),
@@ -41,6 +47,7 @@ const updateItemSchema = z.object({
   parentId: z.string().min(1).max(80).nullable().optional(),
 }).strict().refine((value) => Object.keys(value).length > 0, "No changes supplied.");
 const checklistItemSchema = z.object({
+  id: clientId.optional(),
   title: z.string().trim().min(1).max(200),
 }).strict();
 const updateChecklistItemSchema = z.object({
@@ -54,7 +61,7 @@ const appFields = {
   logoUrl: z.string().trim().url().max(1000).refine((value) => value.startsWith("https://"), "App logos must use HTTPS.").nullable().optional(),
   description: z.string().trim().max(500),
 };
-const createAppSchema = z.object(appFields).strict();
+const createAppSchema = z.object({ id: clientId.optional(), ...appFields }).strict();
 const updateAppSchema = z.object({
   name: appFields.name.optional(),
   logoUrl: appFields.logoUrl,
@@ -155,19 +162,21 @@ api.get("/users", async (context) => {
 api.post("/users/invitations", async (context) => {
   if (context.get("user").role !== "admin") return context.json({ error: { code: "forbidden", message: "Only administrators can invite users." } }, 403);
   const parsed = z.object({
+    id: clientId.optional(),
     email: z.string().trim().email().max(254).transform((value) => value.toLowerCase()),
     name: z.string().trim().min(2).max(80),
     role: z.enum(["admin", "user"]).default("user"),
   }).strict().safeParse(await context.req.json().catch(() => null));
   if (!parsed.success) return context.json({ error: { code: "invalid_request", message: parsed.error.issues[0]?.message } }, 400);
+  const { id: suppliedId, ...invitation } = parsed.data;
   const client = getClient(context.env);
-  const id = crypto.randomUUID();
+  const id = suppliedId ?? crypto.randomUUID();
   await client.execute({
     sql: `INSERT INTO users (id, email, name, role, is_active, updated_at) VALUES (?, ?, ?, ?, 1, ?)
           ON CONFLICT(email) DO UPDATE SET name = excluded.name, role = excluded.role, is_active = 1, updated_at = excluded.updated_at`,
-    args: [id, parsed.data.email, parsed.data.name, parsed.data.role, Date.now()],
+    args: [id, invitation.email, invitation.name, invitation.role, Date.now()],
   });
-  return context.json({ data: { id, ...parsed.data } }, 201);
+  return context.json({ data: { id, ...invitation } }, 201);
 });
 
 api.patch("/users/:id/role", async (context) => {
@@ -234,14 +243,15 @@ api.post("/apps", async (context) => {
   if (context.get("user").role !== "admin") return context.json({ error: { code: "forbidden", message: "Only administrators can create applications." } }, 403);
   const parsed = createAppSchema.safeParse(await context.req.json().catch(() => null));
   if (!parsed.success) return context.json({ error: { code: "invalid_request", message: parsed.error.issues[0]?.message } }, 400);
+  const { id: suppliedId, ...appData } = parsed.data;
   const client = getClient(context.env);
   const position = await client.execute("SELECT COALESCE(MAX(sort_order), -1) + 1 AS nextPosition FROM apps");
-  const id = crypto.randomUUID();
+  const id = suppliedId ?? crypto.randomUUID();
   await client.execute({
-    sql: "INSERT INTO apps (id, name, logo_url, description, sort_order, is_active, created_at) VALUES (?, ?, ?, ?, ?, 1, ?)",
-    args: [id, parsed.data.name, parsed.data.logoUrl ?? null, parsed.data.description || null, Number(position.rows[0]?.nextPosition ?? 0), Date.now()],
+    sql: "INSERT INTO apps (id, name, logo_url, description, sort_order, is_active, created_at) VALUES (?, ?, ?, ?, ?, 1, ?) ON CONFLICT(id) DO NOTHING",
+    args: [id, appData.name, appData.logoUrl ?? null, appData.description || null, Number(position.rows[0]?.nextPosition ?? 0), Date.now()],
   });
-  return context.json({ data: { id, ...parsed.data, logoUrl: parsed.data.logoUrl ?? null, isActive: true, activeItemCount: 0 } }, 201);
+  return context.json({ data: { id, ...appData, logoUrl: appData.logoUrl ?? null, isActive: true, activeItemCount: 0 } }, 201);
 });
 
 api.patch("/apps/:id", async (context) => {
@@ -467,11 +477,12 @@ api.post("/items", async (context) => {
 
   const client = getClient(context.env);
   if (!(await canAccessApp(client, currentUser, parsed.data.appId))) return context.json({ error: { code: "forbidden", message: "You do not have access to this application." } }, 403);
-  const id = crypto.randomUUID();
+  const id = parsed.data.id ?? crypto.randomUUID();
   const now = Date.now();
   await client.execute({
     sql: `INSERT INTO backlog_items (id, app_id, creator_id, title, description, type, status, priority, effort, visibility, created_at, updated_at)
-          VALUES (?, ?, ?, ?, ?, ?, 'backlog', ?, ?, ?, ?, ?)`,
+          VALUES (?, ?, ?, ?, ?, ?, 'backlog', ?, ?, ?, ?, ?)
+          ON CONFLICT(id) DO NOTHING`,
     args: [id, parsed.data.appId, currentUser.id, parsed.data.title, parsed.data.description || null, parsed.data.type, parsed.data.priority, parsed.data.effort, parsed.data.visibility, now, now],
   });
   return context.json({ data: { id } }, 201);
@@ -582,11 +593,12 @@ api.post("/items/:id/checklist", async (context) => {
   if (!item || !canReadItem(currentUser, item, await canAccessApp(client, currentUser, item.appId))) return context.json({ error: { code: "not_found", message: "Request not found." } }, 404);
   if (!canManageSubtasks(currentUser, item)) return context.json({ error: { code: "forbidden", message: "You cannot manage the checklist for this request." } }, 403);
   const position = await client.execute({ sql: "SELECT COALESCE(MAX(sort_order), -1) + 1 AS nextPosition FROM checklist_items WHERE request_id = ?", args: [item.id] });
-  const id = crypto.randomUUID();
+  const id = parsed.data.id ?? crypto.randomUUID();
   const now = Date.now();
   await client.execute({
     sql: `INSERT INTO checklist_items (id, request_id, title, done, sort_order, created_at, updated_at)
-          VALUES (?, ?, ?, 0, ?, ?, ?)`,
+          VALUES (?, ?, ?, 0, ?, ?, ?)
+          ON CONFLICT(id) DO NOTHING`,
     args: [id, item.id, parsed.data.title, Number(position.rows[0]?.nextPosition ?? 0), now, now],
   });
   return context.json({ data: { id } }, 201);

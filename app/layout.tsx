@@ -1,9 +1,14 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { headers } from "next/headers";
 import { AppShell } from "../components/app-shell";
 import { Providers } from "../components/providers";
+import { ServiceWorker } from "../components/service-worker";
 import "./globals.css";
+
+export const viewport: Viewport = {
+  themeColor: "#a94f2c",
+};
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -32,6 +37,13 @@ export async function generateMetadata(): Promise<Metadata> {
     icons: {
       icon: "/favicon.svg",
       shortcut: "/favicon.svg",
+      apple: "/icons/apple-touch-icon.png",
+    },
+    manifest: "/manifest.webmanifest",
+    appleWebApp: {
+      capable: true,
+      statusBarStyle: "default",
+      title: "Backlog",
     },
     openGraph: {
       title: "Backlog",
@@ -56,6 +68,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
         <Providers>
           <AppShell>{children}</AppShell>
         </Providers>
+        <ServiceWorker />
       </body>
     </html>
   );

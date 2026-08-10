@@ -344,12 +344,6 @@ function ReadyShell({ children }: { children: ReactNode }) {
           <LayoutGrid size={19} aria-hidden="true" />
           {backlogApp?.name ?? t.apps}
         </Link>
-        <Link href={createHref} className="tabbar-item tabbar-item-create">
-          <span className="tabbar-create-mark">
-            <Plus size={18} aria-hidden="true" />
-          </span>
-          <span className="sr-only">{t.newRequest}</span>
-        </Link>
         <Link href="/mine" className="tabbar-item" aria-current={isMine ? "page" : undefined}>
           <Star size={19} aria-hidden="true" />
           {t.myRequests}
@@ -359,6 +353,16 @@ function ReadyShell({ children }: { children: ReactNode }) {
           {t.more}
         </button>
       </nav>
+
+      {/* Floating on mobile so "add a proposal" is reachable from anywhere with one thumb tap,
+          instead of competing for space inside the tab bar row — see .fab in globals.css.
+          Hidden on the overview tab: there's no single "current app" there, and each app board
+          already has its own "+" (see overview.tsx's AppBoard). */}
+      {!isOverview && (
+        <Link href={createHref} className="fab" aria-label={t.newRequest}>
+          <Plus size={22} aria-hidden="true" />
+        </Link>
+      )}
 
       <Sheet open={moreOpen} onClose={() => setMoreOpen(false)} title={t.more} closeLabel={t.closeMenu}>
         {profile && (

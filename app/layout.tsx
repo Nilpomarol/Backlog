@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { headers } from "next/headers";
 import { AppShell } from "../components/app-shell";
+import { ClientRouter } from "../components/client-router";
 import { Providers } from "../components/providers";
 import { ServiceWorker } from "../components/service-worker";
 import "./globals.css";
@@ -61,12 +62,14 @@ export async function generateMetadata(): Promise<Metadata> {
   };
 }
 
-export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
+export default function RootLayout() {
   return (
     <html lang="ca" suppressHydrationWarning>
       <body className={`${geistSans.variable} ${geistMono.variable}`}>
         <Providers>
-          <AppShell>{children}</AppShell>
+          <AppShell>
+            <ClientRouter />
+          </AppShell>
         </Providers>
         <ServiceWorker />
       </body>

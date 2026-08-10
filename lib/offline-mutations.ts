@@ -1,6 +1,7 @@
 import type { QueryClient } from "@tanstack/react-query";
 import { getActiveRequester } from "./active-requester";
-import type { ItemEffort, ItemPriority, ItemStatus, ItemType, Role, Visibility } from "./domain";
+import { ApiError } from "./api";
+import type { ItemEffort, ItemPriority, ItemStatus, ItemType, Profile, Role, Visibility } from "./domain";
 
 /**
  * Every mutation that's safe to queue while offline: each has optimistic cache patching (see
@@ -36,6 +37,7 @@ export const mutationKeys = {
   setAppUsers: ["offline-mutation", "setAppUsers"],
   updateApp: ["offline-mutation", "updateApp"],
   deleteApp: ["offline-mutation", "deleteApp"],
+  updateProfile: ["offline-mutation", "updateProfile"],
 } as const;
 
 export async function voteMutationFn({ id, voted }: { id: string; voted: boolean }) {
@@ -51,6 +53,8 @@ export type UpdateRequestInput = {
   parentId?: string | null;
   /** Client-only: the other end of a link/unlink. Never sent to the server. */
   relatedRequestId?: string;
+  baseUpdatedAt?: number;
+  updatedAt?: number;
 };
 
 export async function updateRequestMutationFn({ id, relatedRequestId, ...changes }: UpdateRequestInput) {
@@ -58,32 +62,38 @@ export async function updateRequestMutationFn({ id, relatedRequestId, ...changes
   await getActiveRequester()(`/items/${encodeURIComponent(id)}`, { method: "PATCH", body: JSON.stringify(changes) });
 }
 
-export async function setStatusMutationFn({ id, status }: { id: string; status: ItemStatus }) {
+export type VersionedStatusInput = { id: string; status: ItemStatus; baseUpdatedAt?: number; updatedAt?: number };
+export async function setStatusMutationFn({ id, ...changes }: VersionedStatusInput) {
   await getActiveRequester()(`/items/${encodeURIComponent(id)}/status`, {
     method: "PATCH",
-    body: JSON.stringify({ status }),
+    body: JSON.stringify(changes),
   });
 }
 
-export async function setPriorityMutationFn({ id, priority }: { id: string; priority: ItemPriority }) {
+export type VersionedPriorityInput = { id: string; priority: ItemPriority; baseUpdatedAt?: number; updatedAt?: number };
+export async function setPriorityMutationFn({ id, ...changes }: VersionedPriorityInput) {
   await getActiveRequester()(`/items/${encodeURIComponent(id)}/priority`, {
     method: "PATCH",
-    body: JSON.stringify({ priority }),
+    body: JSON.stringify(changes),
   });
 }
 
-export async function setVisibilityMutationFn({ id, visibility }: { id: string; visibility: Visibility }) {
+export type VersionedVisibilityInput = { id: string; visibility: Visibility; baseUpdatedAt?: number; updatedAt?: number };
+export async function setVisibilityMutationFn({ id, ...changes }: VersionedVisibilityInput) {
   await getActiveRequester()(`/items/${encodeURIComponent(id)}/visibility`, {
     method: "PATCH",
-    body: JSON.stringify({ visibility }),
+    body: JSON.stringify(changes),
   });
 }
 
-export async function deleteRequestMutationFn(id: string) {
-  await getActiveRequester()(`/items/${encodeURIComponent(id)}`, { method: "DELETE" });
+export type DeleteRequestInput = string | { id: string; baseUpdatedAt?: number };
+export async function deleteRequestMutationFn(input: DeleteRequestInput) {
+  const id = typeof input === "string" ? input : input.id;
+  const revision = typeof input === "string" || input.baseUpdatedAt === undefined ? "" : `?baseUpdatedAt=${input.baseUpdatedAt}`;
+  await getActiveRequester()(`/items/${encodeURIComponent(id)}${revision}`, { method: "DELETE" });
 }
 
-export type UpdateChecklistItemInput = { id: string; requestId: string; title?: string; done?: boolean };
+export type UpdateChecklistItemInput = { id: string; requestId: string; title?: string; done?: boolean; baseUpdatedAt?: number; updatedAt?: number };
 
 export async function updateChecklistItemMutationFn({ id, requestId, ...changes }: UpdateChecklistItemInput) {
   void requestId;
@@ -180,24 +190,48 @@ export async function deleteAppMutationFn(id: string) {
   await getActiveRequester()(`/apps/${encodeURIComponent(id)}`, { method: "DELETE" });
 }
 
+export type UpdateProfileInput = { name: string; avatarUrl: string | null };
+
+export async function updateProfileMutationFn(input: UpdateProfileInput): Promise<Profile> {
+  const payload = await getActiveRequester()<{ data: Profile }>("/me", {
+    method: "PATCH",
+    body: JSON.stringify(input),
+  });
+  return payload.data;
+}
+
 export function registerOfflineMutationDefaults(client: QueryClient) {
-  client.setMutationDefaults(mutationKeys.vote, { mutationFn: voteMutationFn });
-  client.setMutationDefaults(mutationKeys.updateRequest, { mutationFn: updateRequestMutationFn });
-  client.setMutationDefaults(mutationKeys.setStatus, { mutationFn: setStatusMutationFn });
-  client.setMutationDefaults(mutationKeys.setPriority, { mutationFn: setPriorityMutationFn });
-  client.setMutationDefaults(mutationKeys.setVisibility, { mutationFn: setVisibilityMutationFn });
-  client.setMutationDefaults(mutationKeys.deleteRequest, { mutationFn: deleteRequestMutationFn });
-  client.setMutationDefaults(mutationKeys.updateChecklistItem, { mutationFn: updateChecklistItemMutationFn });
-  client.setMutationDefaults(mutationKeys.deleteChecklistItem, { mutationFn: deleteChecklistItemMutationFn });
-  client.setMutationDefaults(mutationKeys.createRequest, { mutationFn: createRequestMutationFn });
-  client.setMutationDefaults(mutationKeys.createChecklistItem, { mutationFn: createChecklistItemMutationFn });
-  client.setMutationDefaults(mutationKeys.createApp, { mutationFn: createAppMutationFn });
-  client.setMutationDefaults(mutationKeys.inviteUser, { mutationFn: inviteUserMutationFn });
-  client.setMutationDefaults(mutationKeys.setUserRole, { mutationFn: setUserRoleMutationFn });
-  client.setMutationDefaults(mutationKeys.setUserAccess, { mutationFn: setUserAccessMutationFn });
-  client.setMutationDefaults(mutationKeys.removeInvitation, { mutationFn: removeInvitationMutationFn });
-  client.setMutationDefaults(mutationKeys.setUserApps, { mutationFn: setUserAppsMutationFn });
-  client.setMutationDefaults(mutationKeys.setAppUsers, { mutationFn: setAppUsersMutationFn });
-  client.setMutationDefaults(mutationKeys.updateApp, { mutationFn: updateAppMutationFn });
-  client.setMutationDefaults(mutationKeys.deleteApp, { mutationFn: deleteAppMutationFn });
+  const durable = {
+    networkMode: "online" as const,
+    // A single scope preserves the user's edit order across reconnects. TanStack starts paused
+    // mutations in parallel by default, which can otherwise replay update/delete dependencies out
+    // of order even though they were created sequentially.
+    scope: { id: "offline-outbox" },
+    retry: (_failureCount: number, error: unknown) => error instanceof ApiError && error.code === "offline",
+    retryDelay: (attempt: number) => Math.min(1_000 * 2 ** attempt, 30_000),
+    // Hook-local callbacks are not serialisable. Hydrated mutations inherit this broad refresh so
+    // successful replay still reconciles every optimistic view with the server.
+    onSuccess: () => void client.invalidateQueries(),
+  };
+
+  client.setMutationDefaults(mutationKeys.vote, { ...durable, mutationFn: voteMutationFn });
+  client.setMutationDefaults(mutationKeys.updateRequest, { ...durable, mutationFn: updateRequestMutationFn });
+  client.setMutationDefaults(mutationKeys.setStatus, { ...durable, mutationFn: setStatusMutationFn });
+  client.setMutationDefaults(mutationKeys.setPriority, { ...durable, mutationFn: setPriorityMutationFn });
+  client.setMutationDefaults(mutationKeys.setVisibility, { ...durable, mutationFn: setVisibilityMutationFn });
+  client.setMutationDefaults(mutationKeys.deleteRequest, { ...durable, mutationFn: deleteRequestMutationFn });
+  client.setMutationDefaults(mutationKeys.updateChecklistItem, { ...durable, mutationFn: updateChecklistItemMutationFn });
+  client.setMutationDefaults(mutationKeys.deleteChecklistItem, { ...durable, mutationFn: deleteChecklistItemMutationFn });
+  client.setMutationDefaults(mutationKeys.createRequest, { ...durable, mutationFn: createRequestMutationFn });
+  client.setMutationDefaults(mutationKeys.createChecklistItem, { ...durable, mutationFn: createChecklistItemMutationFn });
+  client.setMutationDefaults(mutationKeys.createApp, { ...durable, mutationFn: createAppMutationFn });
+  client.setMutationDefaults(mutationKeys.inviteUser, { ...durable, mutationFn: inviteUserMutationFn });
+  client.setMutationDefaults(mutationKeys.setUserRole, { ...durable, mutationFn: setUserRoleMutationFn });
+  client.setMutationDefaults(mutationKeys.setUserAccess, { ...durable, mutationFn: setUserAccessMutationFn });
+  client.setMutationDefaults(mutationKeys.removeInvitation, { ...durable, mutationFn: removeInvitationMutationFn });
+  client.setMutationDefaults(mutationKeys.setUserApps, { ...durable, mutationFn: setUserAppsMutationFn });
+  client.setMutationDefaults(mutationKeys.setAppUsers, { ...durable, mutationFn: setAppUsersMutationFn });
+  client.setMutationDefaults(mutationKeys.updateApp, { ...durable, mutationFn: updateAppMutationFn });
+  client.setMutationDefaults(mutationKeys.deleteApp, { ...durable, mutationFn: deleteAppMutationFn });
+  client.setMutationDefaults(mutationKeys.updateProfile, { ...durable, mutationFn: updateProfileMutationFn });
 }

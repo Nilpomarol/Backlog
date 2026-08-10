@@ -53,7 +53,7 @@ export function MinePage() {
         <p className="page-subtitle">{t.mineSubtitle}</p>
       </header>
 
-      {isError ? (
+      {isError && items === undefined ? (
         <ErrorState
           title={t.errorLoading}
           message={describeError(error)}

@@ -20,7 +20,6 @@ import {
   X,
 } from "lucide-react";
 import Link from "next/link";
-import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   ALL_STATUSES,
@@ -36,6 +35,7 @@ import {
 } from "../../lib/domain";
 import { classes } from "../../lib/format";
 import { priorityLabels, statusLabels, typeLabels } from "../../lib/i18n";
+import { useRouter, useSearchParams } from "../../lib/local-navigation";
 import { useAppItems, useApps, useErrorMessage, useSetStatus, useSetVisibility } from "../../lib/queries";
 import { priorityIcons, StatusDot, typeIcons } from "../badges";
 import { useAuth, useLanguage } from "../providers";
@@ -717,7 +717,7 @@ export function AppBacklogPage({ appId }: { appId: string }) {
         </button>
       </header>
 
-      {isError ? (
+      {isError && items === undefined ? (
         <ErrorState
           title={t.errorLoading}
           message={describeError(error)}

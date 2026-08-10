@@ -1,3 +1,4 @@
+import { onlineManager } from "@tanstack/react-query";
 import type {
   Application,
   ChecklistItem,
@@ -45,7 +46,17 @@ export type Requester = <T>(path: string, init?: RequestInit) => Promise<T>;
 /** Builds an authenticated JSON requester bound to a Firebase ID-token supplier. */
 export function createRequester(getToken: () => Promise<string>): Requester {
   return async function request<T>(path: string, init?: RequestInit): Promise<T> {
-    const token = await getToken();
+    let token: string;
+    try {
+      token = await getToken();
+    } catch (error) {
+      const code = typeof error === "object" && error && "code" in error ? String(error.code) : "";
+      if (!navigator.onLine || code.includes("network-request-failed")) {
+        onlineManager.setOnline(false);
+        throw new ApiError("offline", 0, "Authentication is temporarily offline.");
+      }
+      throw error;
+    }
     let response: Response;
     try {
       response = await fetch(`/api${path}`, {
@@ -57,6 +68,10 @@ export function createRequester(getToken: () => Promise<string>): Requester {
         },
       });
     } catch {
+      // navigator.onLine commonly remains true during DNS, captive-portal, and backend outages.
+      // Mark the query client offline before throwing so retryable mutations become paused and
+      // are included in the persisted outbox instead of being rolled back and discarded.
+      onlineManager.setOnline(false);
       throw new ApiError("offline", 0, "Network request failed.");
     }
 

@@ -1,10 +1,10 @@
 "use client";
 
 import { AppWindow, Ban, MoreHorizontal, RotateCcw, ShieldCheck, Trash2, User, UserPlus } from "lucide-react";
-import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { classes } from "../../lib/format";
 import type { ManagedUser, Role } from "../../lib/domain";
+import { useRouter } from "../../lib/local-navigation";
 import {
   useErrorMessage,
   useInviteUser,

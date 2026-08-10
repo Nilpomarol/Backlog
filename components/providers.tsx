@@ -1,6 +1,6 @@
 "use client";
 
-import { QueryClient, useIsRestoring, useQuery, useQueryClient } from "@tanstack/react-query";
+import { MutationCache, QueryClient, onlineManager, useIsRestoring, useQuery, useQueryClient } from "@tanstack/react-query";
 import { PersistQueryClientProvider } from "@tanstack/react-query-persist-client";
 import { createAsyncStoragePersister } from "@tanstack/query-async-storage-persister";
 import type { User as FirebaseUser } from "firebase/auth";
@@ -17,7 +17,13 @@ import {
 import { setActiveRequester } from "../lib/active-requester";
 import { ApiError, createRequester, type Requester } from "../lib/api";
 import type { Profile } from "../lib/domain";
-import { idbStorage } from "../lib/idb-storage";
+import {
+  getPersistenceAccount,
+  idbStorage,
+  recordSyncIssue,
+  resolveSyncIssue,
+  setPersistenceAccount,
+} from "../lib/idb-storage";
 import {
   DEFAULT_LANGUAGE,
   LANGUAGE_STORAGE_KEY,
@@ -26,6 +32,7 @@ import {
   type Language,
 } from "../lib/i18n";
 import { registerOfflineMutationDefaults } from "../lib/offline-mutations";
+import { hasPersistableQueryData } from "../lib/query-persistence";
 import { ToastProvider } from "./ui/toast";
 
 // --- Language -------------------------------------------------------------------------------
@@ -141,8 +148,19 @@ function AuthProvider({ children }: { children: ReactNode }) {
       .then(({ getFirebaseAuth }) =>
         import("firebase/auth").then(({ onAuthStateChanged }) => {
           unsubscribe = onAuthStateChanged(getFirebaseAuth(), (user) => {
-            // Signing out must not leave another account's data in the cache.
-            if (!user) queryClient.clear();
+            const persistedAccount = getPersistenceAccount();
+            if (!user) {
+              // Switch persistence scope before clearing so the previous account's offline copy
+              // remains isolated and can be reused only after that same account signs in again.
+              setPersistenceAccount(null);
+              queryClient.clear();
+            } else if (persistedAccount !== user.uid) {
+              // A legacy unscoped cache may already contain this user's profile. Preserve it for
+              // a seamless migration; otherwise clear generic keys before changing accounts.
+              const belongsToUser = !!queryClient.getQueryData(["me", user.uid]);
+              setPersistenceAccount(user.uid);
+              if (!belongsToUser) queryClient.clear();
+            }
             setAuthState({ resolved: true, user });
           });
         }),
@@ -207,10 +225,10 @@ function AuthProvider({ children }: { children: ReactNode }) {
       ? "signed-out"
       : denied
         ? "denied"
-        : unavailable
-          ? "unavailable"
-          : meQuery.data
-            ? "ready"
+        : meQuery.data
+          ? "ready"
+          : unavailable
+            ? "unavailable"
             : "loading";
 
   // Offline-queued mutations need the *current* requester, not the one captured when they were
@@ -264,10 +282,30 @@ function ToastLayer({ children }: { children: ReactNode }) {
 
 export function Providers({ children }: { children: ReactNode }) {
   const [queryClient] = useState(() => {
+    // OnlineManager starts as `true`, even when the browser itself was launched offline. Seed it
+    // before any child query mounts so an offline reload cannot immediately attempt (and fail) a
+    // refresh before the connectivity probe has run.
+    if (typeof navigator !== "undefined") onlineManager.setOnline(navigator.onLine);
+
     const client = new QueryClient({
+      mutationCache: new MutationCache({
+        onError: (error, variables, _context, mutation) => {
+          const mutationKey = mutation.options.mutationKey;
+          if (!mutationKey || mutationKey[0] !== "offline-mutation") return;
+          if (error instanceof ApiError && error.code === "offline") return;
+          void recordSyncIssue(mutationKey, variables, error);
+        },
+        onSuccess: (_data, variables, _context, mutation) => {
+          const mutationKey = mutation.options.mutationKey;
+          if (mutationKey?.[0] === "offline-mutation") void resolveSyncIssue(mutationKey, variables);
+        },
+      }),
       defaultOptions: {
         queries: {
           staleTime: 30_000,
+          // IndexedDB is the offline copy. Inactive screens must not disappear from it merely
+          // because they have not been opened during React Query's short default GC window.
+          gcTime: Infinity,
           refetchOnWindowFocus: false,
           retry: (failureCount, error) => {
             // Never retry a decision the server already made.
@@ -286,6 +324,38 @@ export function Providers({ children }: { children: ReactNode }) {
   // persister up front is safe.
   const [persister] = useState(() => createAsyncStoragePersister({ storage: idbStorage }));
 
+  useEffect(() => {
+    // Browser connectivity is only a hint. Probe the same-origin worker so a DNS/backend outage
+    // can pause writes, persist them, and later resume even when no native `online` event fires.
+    onlineManager.setEventListener((setOnline) => {
+      let disposed = false;
+      const probe = async () => {
+        if (!navigator.onLine) {
+          setOnline(false);
+          return;
+        }
+        try {
+          const response = await fetch("/api/health", { cache: "no-store" });
+          if (!disposed) setOnline(response.ok);
+        } catch {
+          if (!disposed) setOnline(false);
+        }
+      };
+      const onOffline = () => setOnline(false);
+      const onOnline = () => void probe();
+      window.addEventListener("offline", onOffline);
+      window.addEventListener("online", onOnline);
+      const interval = window.setInterval(() => void probe(), 30_000);
+      void probe();
+      return () => {
+        disposed = true;
+        window.clearInterval(interval);
+        window.removeEventListener("offline", onOffline);
+        window.removeEventListener("online", onOnline);
+      };
+    });
+  }, []);
+
   // Restores the cached queries and any offline-queued mutations from IndexedDB. Using the
   // provider rather than calling persistQueryClient() directly is what supplies React Query's
   // `isRestoring` flag, which suspends every query from fetching until the restore lands —
@@ -293,7 +363,15 @@ export function Providers({ children }: { children: ReactNode }) {
   return (
     <PersistQueryClientProvider
       client={queryClient}
-      persistOptions={{ persister, maxAge: 7 * 24 * 60 * 60_000, buster: "v1" }}
+      persistOptions={{
+        persister,
+        maxAge: Infinity,
+        buster: "v1",
+        // Preserve last-known-good board data when a refresh fails. The default TanStack filter
+        // only persists `success` queries, which silently dropped cached cards once their latest
+        // network attempt moved them into the `error` state.
+        dehydrateOptions: { shouldDehydrateQuery: hasPersistableQueryData },
+      }}
     >
       <LanguageProvider>
         <ToastLayer>

@@ -5,6 +5,7 @@ import { useCallback } from "react";
 import { useAuth, useT } from "../components/providers";
 import {
   ApiError,
+  toChecklistItem,
   toApplication,
   toManagedApplication,
   toManagedUser,
@@ -32,29 +33,32 @@ import {
   setVisibilityMutationFn,
   updateAppMutationFn,
   updateChecklistItemMutationFn,
+  updateProfileMutationFn,
   updateRequestMutationFn,
   voteMutationFn,
   type CreateAppInput,
   type CreateChecklistItemInput,
   type CreateRequestInput,
+  type DeleteRequestInput,
   type InviteUserInput,
   type UpdateAppInput,
   type UpdateChecklistItemInput,
   type UpdateRequestInput,
+  type VersionedPriorityInput,
+  type VersionedStatusInput,
+  type VersionedVisibilityInput,
 } from "./offline-mutations";
 import type {
   Application,
-  ItemPriority,
   ItemStatus,
   ManagedApplication,
   ManagedUser,
-  Profile,
   RequestDetail,
   RequestSummary,
   Role,
   SimilarRequest,
-  Visibility,
 } from "./domain";
+import { buildOfflineRequestDetails, groupItemsByApp } from "./query-persistence";
 
 type Row = Record<string, unknown>;
 type Envelope<T> = { data: T };
@@ -125,9 +129,18 @@ export function useApps() {
 
 export function useAppItems(appId: string | undefined) {
   const { request, status } = useAuth();
+  const client = useQueryClient();
   return useQuery({
     queryKey: queryKeys.appItems(appId ?? ""),
     enabled: status === "ready" && !!appId,
+    // The global all-items index is downloaded on every signed-in session. It is sufficient to
+    // render a board offline, even if that particular board route has never been opened before.
+    initialData: () => {
+      if (!appId) return undefined;
+      const allItems = client.getQueryData<CrossAppRequest[]>(queryKeys.allItems());
+      return allItems?.filter((item) => item.appId === appId);
+    },
+    initialDataUpdatedAt: () => client.getQueryState(queryKeys.allItems())?.dataUpdatedAt,
     queryFn: async () => {
       const payload = await request<Envelope<Row[]>>(`/apps/${encodeURIComponent(appId!)}/items`);
       return payload.data.map(toRequestSummary) as RequestSummary[];
@@ -138,13 +151,28 @@ export function useAppItems(appId: string | undefined) {
 /** Requests across every active app. Backs the overview and "my requests". */
 export function useAllItems(itemStatus?: ItemStatus, options?: { enabled?: boolean }) {
   const { request, status } = useAuth();
+  const client = useQueryClient();
   return useQuery({
     queryKey: queryKeys.allItems(itemStatus),
     enabled: status === "ready" && options?.enabled !== false,
     queryFn: async () => {
-      const query = itemStatus ? `?status=${itemStatus}` : "";
-      const payload = await request<Envelope<Row[]>>(`/items${query}`);
-      return payload.data.map(toRequestSummary) as CrossAppRequest[];
+      const query = itemStatus ? `?status=${itemStatus}` : "?snapshot=1";
+      const payload = await request<Envelope<Row[]> & { checklist?: Row[] }>(`/items${query}`);
+      const items = payload.data.map(toRequestSummary) as CrossAppRequest[];
+
+      // Only the unfiltered response represents complete boards. Fan it out into each board's
+      // normal query key so the persisted cache is ready before those routes are ever visited.
+      if (!itemStatus) {
+        const grouped = groupItemsByApp(items);
+        const apps = client.getQueryData<Application[]>(queryKeys.apps) ?? [];
+        const appIds = new Set([...apps.map((app) => app.id), ...grouped.keys()]);
+        appIds.forEach((appId) => client.setQueryData(queryKeys.appItems(appId), grouped.get(appId) ?? []));
+
+        const details = buildOfflineRequestDetails(items, (payload.checklist ?? []).map(toChecklistItem));
+        details.forEach((detail, id) => client.setQueryData(queryKeys.request(id), detail));
+      }
+
+      return items;
     },
   });
 }
@@ -284,6 +312,17 @@ function restoreRequestCaches(
   if (context?.previousDetail) client.setQueryData(queryKeys.request(id), context.previousDetail);
 }
 
+function prepareRequestRevision(
+  input: { id: string; baseUpdatedAt?: number; updatedAt?: number },
+  snapshot: Awaited<ReturnType<typeof snapshotRequestCaches>>,
+) {
+  const cached =
+    snapshot.previousDetail ??
+    snapshot.previousLists.flatMap(([, list]) => list ?? []).find((item) => item.id === input.id);
+  if (input.baseUpdatedAt === undefined && cached) input.baseUpdatedAt = cached.updatedAt;
+  if (input.updatedAt === undefined) input.updatedAt = Math.max(Date.now(), (input.baseUpdatedAt ?? 0) + 1);
+}
+
 /** Applies `patch` to a request wherever it's cached: every matching list and the detail view. */
 function patchRequestCaches(client: QueryClient, id: string, patch: (item: RequestSummary) => RequestSummary) {
   client.setQueriesData<RequestSummary[]>({ queryKey: ["items"] }, (list) =>
@@ -348,10 +387,17 @@ export function useUpdateRequest() {
   return useMutation({
     mutationKey: mutationKeys.updateRequest,
     mutationFn: updateRequestMutationFn,
-    onMutate: async ({ id, relatedRequestId, ...changes }: Input) => {
+    onMutate: async (input: Input) => {
+      const { id, relatedRequestId } = input;
+      const changes = { ...input } as Partial<Input>;
+      delete changes.id;
+      delete changes.relatedRequestId;
+      delete changes.baseUpdatedAt;
+      delete changes.updatedAt;
       void relatedRequestId;
       const snapshot = await snapshotRequestCaches(client, id);
-      patchRequestCaches(client, id, (item) => ({ ...item, ...changes }));
+      prepareRequestRevision(input, snapshot);
+      patchRequestCaches(client, id, (item) => ({ ...item, ...changes, updatedAt: input.updatedAt! }));
       return { ...snapshot, id };
     },
     onError: (_error, _input, context) => restoreRequestCaches(client, context?.id ?? "", context),
@@ -367,9 +413,11 @@ export function useSetStatus() {
   return useMutation({
     mutationKey: mutationKeys.setStatus,
     mutationFn: setStatusMutationFn,
-    onMutate: async ({ id, status }: { id: string; status: ItemStatus }) => {
+    onMutate: async (input: VersionedStatusInput) => {
+      const { id, status } = input;
       const snapshot = await snapshotRequestCaches(client, id);
-      patchRequestCaches(client, id, (item) => ({ ...item, status }));
+      prepareRequestRevision(input, snapshot);
+      patchRequestCaches(client, id, (item) => ({ ...item, status, updatedAt: input.updatedAt! }));
       return { ...snapshot, id };
     },
     onError: (_error, _input, context) => restoreRequestCaches(client, context?.id ?? "", context),
@@ -382,9 +430,11 @@ export function useSetPriority() {
   return useMutation({
     mutationKey: mutationKeys.setPriority,
     mutationFn: setPriorityMutationFn,
-    onMutate: async ({ id, priority }: { id: string; priority: ItemPriority }) => {
+    onMutate: async (input: VersionedPriorityInput) => {
+      const { id, priority } = input;
       const snapshot = await snapshotRequestCaches(client, id);
-      patchRequestCaches(client, id, (item) => ({ ...item, priority }));
+      prepareRequestRevision(input, snapshot);
+      patchRequestCaches(client, id, (item) => ({ ...item, priority, updatedAt: input.updatedAt! }));
       return { ...snapshot, id };
     },
     onError: (_error, _input, context) => restoreRequestCaches(client, context?.id ?? "", context),
@@ -397,9 +447,11 @@ export function useSetVisibility() {
   return useMutation({
     mutationKey: mutationKeys.setVisibility,
     mutationFn: setVisibilityMutationFn,
-    onMutate: async ({ id, visibility }: { id: string; visibility: Visibility }) => {
+    onMutate: async (input: VersionedVisibilityInput) => {
+      const { id, visibility } = input;
       const snapshot = await snapshotRequestCaches(client, id);
-      patchRequestCaches(client, id, (item) => ({ ...item, visibility }));
+      prepareRequestRevision(input, snapshot);
+      patchRequestCaches(client, id, (item) => ({ ...item, visibility, updatedAt: input.updatedAt! }));
       return { ...snapshot, id };
     },
     onError: (_error, _input, context) => restoreRequestCaches(client, context?.id ?? "", context),
@@ -412,12 +464,16 @@ export function useDeleteRequest() {
   return useMutation({
     mutationKey: mutationKeys.deleteRequest,
     mutationFn: deleteRequestMutationFn,
-    onMutate: async (id: string) => {
+    onMutate: async (input: DeleteRequestInput) => {
+      const id = typeof input === "string" ? input : input.id;
       const snapshot = await snapshotRequestCaches(client, id);
+      if (typeof input !== "string" && input.baseUpdatedAt === undefined) {
+        input.baseUpdatedAt = snapshot.previousDetail?.updatedAt;
+      }
       client.setQueriesData<RequestSummary[]>({ queryKey: ["items"] }, (list) => list?.filter((item) => item.id !== id));
       return { ...snapshot, id };
     },
-    onError: (_error, _id, context) => restoreRequestCaches(client, context?.id ?? "", context),
+    onError: (_error, _input, context) => restoreRequestCaches(client, context?.id ?? "", context),
     // Deliberately doesn't touch queryKeys.request(id): the deleted item's own detail page is
     // typically still mounted right here (navigating away on success, see request-detail.tsx),
     // and removing or invalidating an actively-observed query forces an immediate refetch —
@@ -467,10 +523,19 @@ export function useUpdateChecklistItem() {
   return useMutation({
     mutationKey: mutationKeys.updateChecklistItem,
     mutationFn: updateChecklistItemMutationFn,
-    onMutate: async ({ id, requestId, ...changes }: ChecklistPatchInput) => {
+    onMutate: async (input: ChecklistPatchInput) => {
+      const { id, requestId } = input;
+      const changes = { ...input } as Partial<ChecklistPatchInput>;
+      delete changes.id;
+      delete changes.requestId;
+      delete changes.baseUpdatedAt;
+      delete changes.updatedAt;
       await client.cancelQueries({ queryKey: queryKeys.request(requestId) });
+      const current = client.getQueryData<RequestDetail>(queryKeys.request(requestId))?.checklist.find((entry) => entry.id === id);
+      if (input.baseUpdatedAt === undefined && current) input.baseUpdatedAt = current.updatedAt;
+      if (input.updatedAt === undefined) input.updatedAt = Math.max(Date.now(), (input.baseUpdatedAt ?? 0) + 1);
       const previous = patchChecklistCache(client, requestId, (list) =>
-        list.map((entry) => (entry.id === id ? { ...entry, ...changes } : entry)),
+        list.map((entry) => (entry.id === id ? { ...entry, ...changes, updatedAt: input.updatedAt! } : entry)),
       );
       return { previous, requestId };
     },
@@ -501,15 +566,18 @@ export function useDeleteChecklistItem() {
 // --- Profile, people, apps ------------------------------------------------------------------
 
 export function useUpdateProfile() {
-  const { request, setProfile } = useAuth();
+  const { profile, setProfile } = useAuth();
   const client = useQueryClient();
   return useMutation({
-    mutationFn: async (input: { name: string; avatarUrl: string | null }) => {
-      const payload = await request<Envelope<Profile>>("/me", {
-        method: "PATCH",
-        body: JSON.stringify(input),
-      });
-      return payload.data;
+    mutationKey: mutationKeys.updateProfile,
+    mutationFn: updateProfileMutationFn,
+    onMutate: (input) => {
+      const previous = profile;
+      if (profile) setProfile({ ...profile, ...input });
+      return { previous };
+    },
+    onError: (_error, _input, context) => {
+      if (context?.previous) setProfile(context.previous);
     },
     onSuccess: (profile) => {
       setProfile(profile);

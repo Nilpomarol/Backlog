@@ -3,6 +3,7 @@
 import { Camera, Loader2, LogOut, ShieldCheck, Upload, User } from "lucide-react";
 import { useRef, useState, type ChangeEvent, type FormEvent } from "react";
 import { classes } from "../../lib/format";
+import { useOnlineStatus } from "../../lib/connectivity";
 import { LANGUAGES, type Language } from "../../lib/i18n";
 import { useErrorMessage, useUpdateProfile } from "../../lib/queries";
 import { IMAGE_ALLOWED_TYPES, ImageUploadError, uploadImage } from "../../lib/upload-image";
@@ -17,6 +18,7 @@ export function ProfileSettingsPage() {
   const updateProfile = useUpdateProfile();
   const { toast } = useToast();
   const describeError = useErrorMessage();
+  const online = useOnlineStatus();
 
   const [name, setName] = useState(profile?.name ?? "");
   const [avatarUrl, setAvatarUrl] = useState(profile?.avatarUrl ?? "");
@@ -45,6 +47,10 @@ export function ProfileSettingsPage() {
     const file = event.target.files?.[0];
     event.target.value = "";
     if (!file) return;
+    if (!online) {
+      toast(t.mediaRequiresOnline, { tone: "error" });
+      return;
+    }
     setUploading(true);
     try {
       setAvatarUrl(await uploadImage(file, "avatars"));
@@ -98,7 +104,7 @@ export function ProfileSettingsPage() {
               className="profile-avatar-btn"
               aria-label={t.changePhoto}
               title={t.changePhoto}
-              disabled={uploading}
+              disabled={uploading || !online}
               onClick={() => fileInputRef.current?.click()}
             >
               {uploading ? (
@@ -125,11 +131,13 @@ export function ProfileSettingsPage() {
             size="sm"
             variant="secondary"
             loading={uploading}
+            disabled={!online}
             icon={<Upload size={14} aria-hidden="true" />}
             onClick={() => fileInputRef.current?.click()}
           >
             {t.uploadPhoto}
           </Button>
+          {!online && <span className="field-hint">{t.mediaRequiresOnline}</span>}
           {googlePhotoUrl && avatarUrl !== googlePhotoUrl && (
             <Button type="button" size="sm" variant="ghost" onClick={() => setAvatarUrl(googlePhotoUrl)}>
               {t.useGooglePhoto}
@@ -183,7 +191,7 @@ export function ProfileSettingsPage() {
         />
 
         <div className="settings-card-actions">
-          <Button type="submit" variant="primary" loading={updateProfile.isPending} disabled={!dirty || !!nameError}>
+          <Button type="submit" variant="primary" loading={updateProfile.isPending && !updateProfile.isPaused} disabled={!dirty || !!nameError}>
             {t.saveChanges}
           </Button>
         </div>

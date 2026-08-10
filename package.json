@@ -7,10 +7,10 @@
   },
   "scripts": {
     "dev": "node scripts/sync-dev-vars.mjs && vinext dev",
-    "build": "vinext build",
+    "build": "vinext build && node scripts/generate-precache.mjs",
     "start": "vinext start",
     "preview": "npm run build && vite preview",
-    "deploy": "vinext deploy",
+    "deploy": "npm run build && wrangler deploy",
     "deploy:upload": "wrangler deploy",
     "deploy:preview": "wrangler versions upload",
     "deploy:dry-run": "npm run build && wrangler deploy --dry-run --outdir .wrangler/dry-run",

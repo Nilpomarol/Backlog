@@ -57,7 +57,7 @@ function ChecklistSection({ request, canManage }: { request: RequestDetail; canM
                 type="checkbox"
                 className="checkbox"
                 checked={entry.done}
-                disabled={!canManage || update.isPending}
+                disabled={!canManage || (update.isPending && !update.isPaused)}
                 onChange={(event) =>
                   update.mutate({ id: entry.id, requestId: request.id, done: event.target.checked }, { onError })
                 }
@@ -100,7 +100,7 @@ function ChecklistSection({ request, canManage }: { request: RequestDetail; canM
           <Button
             variant="secondary"
             icon={<Plus size={15} aria-hidden="true" />}
-            disabled={!draft.trim() || create.isPending}
+            disabled={!draft.trim() || (create.isPending && !create.isPaused)}
             onClick={submitAdd}
           >
             {t.addChecklistItem}
@@ -156,13 +156,15 @@ function LinkCardDialog({ request, onClose }: { request: RequestDetail; onClose:
               <Button
                 size="sm"
                 variant="secondary"
-                loading={link.isPending}
-                onClick={() =>
+                loading={link.isPending && !link.isPaused}
+                onClick={() => {
                   link.mutate(
                     { id: candidate.id, parentId: request.id, relatedRequestId: request.id },
-                    { onError, onSuccess: () => { toast(t.toastLinked); onClose(); } },
-                  )
-                }
+                    { onError },
+                  );
+                  toast(t.toastLinked);
+                  onClose();
+                }}
               >
                 {t.link}
               </Button>

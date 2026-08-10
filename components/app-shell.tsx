@@ -10,17 +10,18 @@ import {
   SquareStack,
   Star,
   Loader2,
-  WifiOff,
 } from "lucide-react";
 import { useIsFetching } from "@tanstack/react-query";
 import Link from "next/link";
-import { usePathname, useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import { rememberVisitedUrl } from "../lib/board-return";
+import { useOnlineStatus } from "../lib/connectivity";
 import { LANGUAGES, type Language } from "../lib/i18n";
-import { useApps } from "../lib/queries";
+import { usePathname, useSearchParams } from "../lib/local-navigation";
+import { useAllItems, useApps } from "../lib/queries";
 import { isRouteTransitionPending, markRouteTransitionEnd, subscribeRouteTransition } from "../lib/route-transition";
 import { useAuth, useLanguage } from "./providers";
+import { SyncStatus } from "./sync-status";
 import { AppIcon, Avatar, Button, SegmentedControl, SkeletonCard } from "./ui/primitives";
 import { Sheet } from "./ui/overlay";
 
@@ -95,6 +96,7 @@ function PendingShell() {
 function SignInScreen() {
   const { t } = useLanguage();
   const { signIn, problem } = useAuth();
+  const online = useOnlineStatus();
   return (
     <AuthShell>
       <span className="auth-mark">
@@ -102,7 +104,15 @@ function SignInScreen() {
       </span>
       <h1 className="auth-title">{t.signInTitle}</h1>
       <p className="auth-body">{t.signInBody}</p>
-      <Button variant="primary" size="lg" block icon={<LogIn size={18} aria-hidden="true" />} onClick={() => void signIn()}>
+      {!online && <p className="field-hint">{t.signInRequiresOnline}</p>}
+      <Button
+        variant="primary"
+        size="lg"
+        block
+        disabled={!online}
+        icon={<LogIn size={18} aria-hidden="true" />}
+        onClick={() => void signIn()}
+      >
         {t.signInGoogle}
       </Button>
       {problem && (
@@ -203,16 +213,6 @@ export function AppShell({ children }: { children: ReactNode }) {
   return <ReadyShell>{children}</ReadyShell>;
 }
 
-/** Connectivity is an external store, so it is read rather than mirrored into state. */
-function subscribeToConnectivity(onChange: () => void) {
-  window.addEventListener("online", onChange);
-  window.addEventListener("offline", onChange);
-  return () => {
-    window.removeEventListener("online", onChange);
-    window.removeEventListener("offline", onChange);
-  };
-}
-
 function ReadyShell({ children }: { children: ReactNode }) {
   const { t } = useLanguage();
   const { profile, signOut } = useAuth();
@@ -234,11 +234,6 @@ function ReadyShell({ children }: { children: ReactNode }) {
     if (moreOpen) setMoreOpen(false);
   }
 
-  const online = useSyncExternalStore(
-    subscribeToConnectivity,
-    () => navigator.onLine,
-    () => true,
-  );
   // Background refetches get a thin top bar; the content underneath stays interactive.
   const backgroundFetches = useIsFetching();
   // Covers the router-navigation gap too (including back/forward, which vinext resolves over
@@ -260,6 +255,9 @@ function ReadyShell({ children }: { children: ReactNode }) {
   }, [pathname, searchParams]);
 
   const { data: apps = [] } = useApps();
+  // Warm the complete card index from every signed-in screen. useAllItems deduplicates this with
+  // overview/mine and fans the response out into persistent per-board caches.
+  useAllItems();
 
   const currentAppId = pathname.startsWith("/a/") ? decodeURIComponent(pathname.split("/")[2] ?? "") : "";
   const backlogApp = apps.find((app) => app.id === currentAppId) ?? apps[0];
@@ -333,12 +331,7 @@ function ReadyShell({ children }: { children: ReactNode }) {
       </nav>
 
       <div className="main">
-        {!online && (
-          <p className="offline-bar" role="status">
-            <WifiOff size={15} aria-hidden="true" />
-            {t.errorOffline}
-          </p>
-        )}
+        <SyncStatus />
         <main id="main">{children}</main>
       </div>
 

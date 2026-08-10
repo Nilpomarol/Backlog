@@ -8,7 +8,7 @@ import { canChangeWorkflow, canDeleteItem, canEditItem, canManageSubtasks, canRe
 import { checkRateLimit } from "../lib/rate-limit";
 
 type AppUser = { id: string; email: string; name: string; avatarUrl: string | null; role: "admin" | "user" };
-type ItemRecord = { id: string; appId: string; creatorId: string; visibility: Visibility; status: string; parentId: string | null };
+type ItemRecord = { id: string; appId: string; creatorId: string; visibility: Visibility; status: string; parentId: string | null; updatedAt: number };
 
 export type ApiEnvironment = DatabaseEnvironment & {
   FIREBASE_PROJECT_ID?: string;
@@ -45,6 +45,8 @@ const updateItemSchema = z.object({
   type: itemType.optional(),
   // Links or unlinks this item from a parent — see the validation in PATCH /items/:id below.
   parentId: z.string().min(1).max(80).nullable().optional(),
+  baseUpdatedAt: z.number().int().nonnegative().optional(),
+  updatedAt: z.number().int().positive().optional(),
 }).strict().refine((value) => Object.keys(value).length > 0, "No changes supplied.");
 const checklistItemSchema = z.object({
   id: clientId.optional(),
@@ -53,6 +55,8 @@ const checklistItemSchema = z.object({
 const updateChecklistItemSchema = z.object({
   title: z.string().trim().min(1).max(200).optional(),
   done: z.boolean().optional(),
+  baseUpdatedAt: z.number().int().nonnegative().optional(),
+  updatedAt: z.number().int().positive().optional(),
 }).strict().refine((value) => Object.keys(value).length > 0, "No changes supplied.");
 const avatarUrl = z.string().trim().url().max(1000).refine((value) => value.startsWith("https://"), "Profile images must use HTTPS.").nullable();
 const appFields = {
@@ -432,7 +436,24 @@ api.get("/items", async (context) => {
           GROUP BY b.id ORDER BY b.updated_at DESC`,
     args: [currentUser.id, currentUser.role, ...(currentUser.role === "admin" ? [] : [currentUser.id]), ...statuses],
   });
-  return context.json({ data: result.rows });
+
+  // The normal response is intentionally compact. The signed-in client requests a snapshot once
+  // in the background so every task detail (including checklists) is available before the user
+  // opens it. Reusing the already-authorised item ids keeps the second query permission-safe and
+  // avoids one HTTP request per task.
+  if (context.req.query("snapshot") !== "1" || result.rows.length === 0) {
+    return context.json({ data: result.rows, ...(context.req.query("snapshot") === "1" ? { checklist: [] } : {}) });
+  }
+  const itemIds = result.rows.map((row) => String(row.id));
+  const checklist = await client.execute({
+    sql: `SELECT id, request_id AS requestId, title, done, sort_order AS sortOrder,
+            created_at AS createdAt, updated_at AS updatedAt
+          FROM checklist_items
+          WHERE request_id IN (${itemIds.map(() => "?").join(", ")})
+          ORDER BY request_id, sort_order, created_at`,
+    args: itemIds,
+  });
+  return context.json({ data: result.rows, checklist: checklist.rows });
 });
 
 api.get("/items/:id", async (context) => {
@@ -496,6 +517,9 @@ api.patch("/items/:id", async (context) => {
   const item = await findItem(client, context.req.param("id"));
   if (!item || !canReadItem(currentUser, item, await canAccessApp(client, currentUser, item.appId))) return context.json({ error: { code: "not_found", message: "Request not found." } }, 404);
   if (!canEditItem(currentUser, item)) return context.json({ error: { code: "forbidden", message: "You cannot edit this request." } }, 403);
+  if (revisionConflicts(parsed.data.baseUpdatedAt, item.updatedAt)) {
+    return context.json({ error: { code: "conflict", message: "This request changed on another device." } }, 409);
+  }
   if (parsed.data.appId !== undefined) {
     const target = await client.execute({ sql: "SELECT id FROM apps WHERE id = ? AND is_active = 1", args: [parsed.data.appId] });
     if (target.rows.length === 0) return context.json({ error: { code: "invalid_request", message: "That application does not exist." } }, 400);
@@ -511,7 +535,9 @@ api.patch("/items/:id", async (context) => {
     const childCount = await client.execute({ sql: "SELECT COUNT(*) AS count FROM backlog_items WHERE parent_id = ?", args: [item.id] });
     if (Number(childCount.rows[0]?.count ?? 0) > 0) return context.json({ error: { code: "invalid_request", message: "This card already has its own linked cards." } }, 400);
   }
-  const columns: Record<string, string | number | null | undefined> = { ...parsed.data, updatedAt: Date.now() };
+  const changes = { ...parsed.data };
+  delete changes.baseUpdatedAt;
+  const columns: Record<string, string | number | null | undefined> = { ...changes, updatedAt: changes.updatedAt ?? Date.now() };
   const names: Record<string, string> = { appId: "app_id", title: "title", description: "description", type: "type", parentId: "parent_id", updatedAt: "updated_at" };
   const entries = Object.entries(columns);
   await client.execute({ sql: `UPDATE backlog_items SET ${entries.map(([key]) => `${names[key]} = ?`).join(", ")} WHERE id = ?`, args: [...entries.map(([, value]) => value ?? null), item.id] });
@@ -519,38 +545,41 @@ api.patch("/items/:id", async (context) => {
 });
 
 api.patch("/items/:id/status", async (context) => {
-  const parsed = z.object({ status: itemStatus }).strict().safeParse(await context.req.json().catch(() => null));
+  const parsed = z.object({ status: itemStatus, baseUpdatedAt: z.number().int().nonnegative().optional(), updatedAt: z.number().int().positive().optional() }).strict().safeParse(await context.req.json().catch(() => null));
   if (!parsed.success) return context.json({ error: { code: "invalid_request", message: parsed.error.issues[0]?.message } }, 400);
   const currentUser = context.get("user");
   if (!canChangeWorkflow(currentUser)) return context.json({ error: { code: "forbidden", message: "Only administrators can move requests." } }, 403);
   const client = getClient(context.env);
   const item = await findItem(client, context.req.param("id"));
   if (!item) return context.json({ error: { code: "not_found", message: "Request not found." } }, 404);
-  await client.execute({ sql: "UPDATE backlog_items SET status = ?, updated_at = ? WHERE id = ?", args: [parsed.data.status, Date.now(), item.id] });
+  if (revisionConflicts(parsed.data.baseUpdatedAt, item.updatedAt)) return context.json({ error: { code: "conflict", message: "This request changed on another device." } }, 409);
+  await client.execute({ sql: "UPDATE backlog_items SET status = ?, updated_at = ? WHERE id = ?", args: [parsed.data.status, parsed.data.updatedAt ?? Date.now(), item.id] });
   return context.json({ data: { id: item.id, status: parsed.data.status } });
 });
 
 api.patch("/items/:id/priority", async (context) => {
-  const parsed = z.object({ priority: itemPriority }).strict().safeParse(await context.req.json().catch(() => null));
+  const parsed = z.object({ priority: itemPriority, baseUpdatedAt: z.number().int().nonnegative().optional(), updatedAt: z.number().int().positive().optional() }).strict().safeParse(await context.req.json().catch(() => null));
   if (!parsed.success) return context.json({ error: { code: "invalid_request", message: parsed.error.issues[0]?.message } }, 400);
   const currentUser = context.get("user");
   if (!canChangeWorkflow(currentUser)) return context.json({ error: { code: "forbidden", message: "Only administrators can set priority." } }, 403);
   const client = getClient(context.env);
   const item = await findItem(client, context.req.param("id"));
   if (!item) return context.json({ error: { code: "not_found", message: "Request not found." } }, 404);
-  await client.execute({ sql: "UPDATE backlog_items SET priority = ?, updated_at = ? WHERE id = ?", args: [parsed.data.priority, Date.now(), item.id] });
+  if (revisionConflicts(parsed.data.baseUpdatedAt, item.updatedAt)) return context.json({ error: { code: "conflict", message: "This request changed on another device." } }, 409);
+  await client.execute({ sql: "UPDATE backlog_items SET priority = ?, updated_at = ? WHERE id = ?", args: [parsed.data.priority, parsed.data.updatedAt ?? Date.now(), item.id] });
   return context.json({ data: { id: item.id, priority: parsed.data.priority } });
 });
 
 api.patch("/items/:id/visibility", async (context) => {
-  const parsed = z.object({ visibility: itemVisibility }).strict().safeParse(await context.req.json().catch(() => null));
+  const parsed = z.object({ visibility: itemVisibility, baseUpdatedAt: z.number().int().nonnegative().optional(), updatedAt: z.number().int().positive().optional() }).strict().safeParse(await context.req.json().catch(() => null));
   if (!parsed.success) return context.json({ error: { code: "invalid_request", message: parsed.error.issues[0]?.message } }, 400);
   const currentUser = context.get("user");
   if (currentUser.role !== "admin") return context.json({ error: { code: "forbidden", message: "Only administrators can change visibility." } }, 403);
   const client = getClient(context.env);
   const item = await findItem(client, context.req.param("id"));
   if (!item) return context.json({ error: { code: "not_found", message: "Request not found." } }, 404);
-  await client.execute({ sql: "UPDATE backlog_items SET visibility = ?, updated_at = ? WHERE id = ?", args: [parsed.data.visibility, Date.now(), item.id] });
+  if (revisionConflicts(parsed.data.baseUpdatedAt, item.updatedAt)) return context.json({ error: { code: "conflict", message: "This request changed on another device." } }, 409);
+  await client.execute({ sql: "UPDATE backlog_items SET visibility = ?, updated_at = ? WHERE id = ?", args: [parsed.data.visibility, parsed.data.updatedAt ?? Date.now(), item.id] });
   return context.json({ data: { id: item.id, visibility: parsed.data.visibility } });
 });
 
@@ -560,6 +589,12 @@ api.delete("/items/:id", async (context) => {
   const item = await findItem(client, context.req.param("id"));
   if (!item || !canReadItem(currentUser, item, await canAccessApp(client, currentUser, item.appId))) return context.json({ error: { code: "not_found", message: "Request not found." } }, 404);
   if (!canDeleteItem(currentUser, item)) return context.json({ error: { code: "forbidden", message: "You cannot delete this request." } }, 403);
+  const suppliedRevision = context.req.query("baseUpdatedAt");
+  if (suppliedRevision !== undefined) {
+    const baseUpdatedAt = Number(suppliedRevision);
+    if (!Number.isSafeInteger(baseUpdatedAt) || baseUpdatedAt < 0) return context.json({ error: { code: "invalid_request", message: "Invalid base revision." } }, 400);
+    if (revisionConflicts(baseUpdatedAt, item.updatedAt)) return context.json({ error: { code: "conflict", message: "This request changed on another device." } }, 409);
+  }
   // Linked cards are independent — deleting this one should only unlink them, never take them
   // down too. Unlinking first turns the FK's ON DELETE cascade into a no-op below.
   await client.execute({ sql: "UPDATE backlog_items SET parent_id = NULL, updated_at = ? WHERE parent_id = ?", args: [Date.now(), item.id] });
@@ -606,13 +641,13 @@ api.post("/items/:id/checklist", async (context) => {
 
 async function findChecklistItem(client: ReturnType<typeof getClient>, id: string) {
   const result = await client.execute({
-    sql: `SELECT ci.id, ci.request_id AS requestId, b.creator_id AS creatorId
+    sql: `SELECT ci.id, ci.request_id AS requestId, ci.updated_at AS updatedAt, b.creator_id AS creatorId
           FROM checklist_items ci JOIN backlog_items b ON b.id = ci.request_id WHERE ci.id = ?`,
     args: [id],
   });
   const row = result.rows[0];
   if (!row) return null;
-  return { id: String(row.id), requestId: String(row.requestId), creatorId: String(row.creatorId) };
+  return { id: String(row.id), requestId: String(row.requestId), creatorId: String(row.creatorId), updatedAt: Number(row.updatedAt) };
 }
 
 api.patch("/checklist/:id", async (context) => {
@@ -623,7 +658,8 @@ api.patch("/checklist/:id", async (context) => {
   const checklistItem = await findChecklistItem(client, context.req.param("id"));
   if (!checklistItem) return context.json({ error: { code: "not_found", message: "Checklist item not found." } }, 404);
   if (!canManageSubtasks(currentUser, checklistItem)) return context.json({ error: { code: "forbidden", message: "You cannot manage the checklist for this request." } }, 403);
-  const columns: Record<string, string | number> = { updatedAt: Date.now() };
+  if (revisionConflicts(parsed.data.baseUpdatedAt, checklistItem.updatedAt)) return context.json({ error: { code: "conflict", message: "This checklist item changed on another device." } }, 409);
+  const columns: Record<string, string | number> = { updatedAt: parsed.data.updatedAt ?? Date.now() };
   if (parsed.data.title !== undefined) columns.title = parsed.data.title;
   if (parsed.data.done !== undefined) columns.done = parsed.data.done ? 1 : 0;
   const names: Record<string, string> = { title: "title", done: "done", updatedAt: "updated_at" };
@@ -643,7 +679,7 @@ api.delete("/checklist/:id", async (context) => {
 });
 
 async function findItem(client: ReturnType<typeof getClient>, id: string): Promise<ItemRecord | null> {
-  const result = await client.execute({ sql: "SELECT id, app_id, creator_id, visibility, status, parent_id FROM backlog_items WHERE id = ?", args: [id] });
+  const result = await client.execute({ sql: "SELECT id, app_id, creator_id, visibility, status, parent_id, updated_at FROM backlog_items WHERE id = ?", args: [id] });
   const row = result.rows[0];
   if (!row) return null;
   return {
@@ -653,6 +689,7 @@ async function findItem(client: ReturnType<typeof getClient>, id: string): Promi
     visibility: String(row.visibility) as Visibility,
     status: String(row.status),
     parentId: row.parent_id === null ? null : String(row.parent_id),
+    updatedAt: Number(row.updated_at),
   };
 }
 
@@ -668,6 +705,10 @@ async function canAccessApp(client: ReturnType<typeof getClient>, user: AppUser,
 
 export function normalizeTitle(value: string) {
   return value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+}
+
+export function revisionConflicts(baseUpdatedAt: number | undefined, currentUpdatedAt: number) {
+  return baseUpdatedAt !== undefined && baseUpdatedAt !== currentUpdatedAt;
 }
 
 export function similarity(left: string, right: string) {

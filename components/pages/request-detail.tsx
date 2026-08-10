@@ -12,7 +12,6 @@ import {
   FolderInput,
 } from "lucide-react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { useState } from "react";
 import {
   ALL_STATUSES,
@@ -27,6 +26,7 @@ import {
 import { useBackHref } from "../../lib/board-return";
 import { formatDateTime, formatRelative } from "../../lib/format";
 import { statusLabelsSingular } from "../../lib/i18n";
+import { useRouter } from "../../lib/local-navigation";
 import {
   useApps,
   useDeleteRequest,
@@ -77,7 +77,7 @@ export function RequestDetailPage({ requestId }: { requestId: string }) {
 
   const onError = (failure: unknown) => toast(describeError(failure), { tone: "error" });
 
-  if (isError) {
+  if (isError && request === undefined) {
     const notFound = error instanceof Error && "code" in error && (error as { code: string }).code === "not_found";
     return (
       <div className="page page-prose">
@@ -431,7 +431,7 @@ export function RequestDetailPage({ requestId }: { requestId: string }) {
                 type="button"
                 className="stepper-step"
                 aria-current={request.status === status}
-                disabled={setStatus.isPending || request.status === status}
+                disabled={(setStatus.isPending && !setStatus.isPaused) || request.status === status}
                 onClick={() => changeStatus(status)}
               >
                 {request.status === status ? <Check size={13} aria-hidden="true" /> : <StatusDot status={status} />}
@@ -460,7 +460,7 @@ export function RequestDetailPage({ requestId }: { requestId: string }) {
                   type="button"
                   className="stepper-step"
                   aria-current={request.priority === priority}
-                  disabled={setPriority.isPending || request.priority === priority}
+                  disabled={(setPriority.isPending && !setPriority.isPaused) || request.priority === priority}
                   onClick={() => changePriority(priority)}
                 >
                   {request.priority === priority ? <Check size={13} aria-hidden="true" /> : <Icon size={13} aria-hidden="true" />}
@@ -481,20 +481,14 @@ export function RequestDetailPage({ requestId }: { requestId: string }) {
         cancelLabel={t.cancel}
         closeLabel={t.close}
         destructive
-        busy={remove.isPending}
-        onConfirm={() =>
-          remove.mutate(request.id, {
-            onError,
-            onSuccess: () => {
-              toast(t.toastDeleted);
-              // Not boardHref: deleting can cascade-delete subtasks (see db/schema.ts), so
-              // "wherever you came from" may itself be a request that no longer exists —
-              // e.g. you reached this parent via a child's breadcrumb, then deleted the parent.
-              // The board is always a valid destination.
-              router.push(`/a/${encodeURIComponent(request.appId)}`);
-            },
-          })
-        }
+        busy={remove.isPending && !remove.isPaused}
+        onConfirm={() => {
+          remove.mutate({ id: request.id, baseUpdatedAt: request.updatedAt }, { onError });
+          toast(t.toastDeleted);
+          setConfirmDelete(false);
+          // The board remains a valid destination even when the delete is queued offline.
+          router.push(`/a/${encodeURIComponent(request.appId)}`);
+        }}
       />
 
       <Dialog
@@ -509,20 +503,16 @@ export function RequestDetailPage({ requestId }: { requestId: string }) {
             </Button>
             <Button
               variant="primary"
-              loading={update.isPending}
+              loading={update.isPending && !update.isPaused}
               disabled={moveTarget === request.appId}
-              onClick={() =>
+              onClick={() => {
                 update.mutate(
                   { id: request.id, appId: moveTarget },
-                  {
-                    onError,
-                    onSuccess: () => {
-                      toast(t.toastMoved);
-                      setMoveOpen(false);
-                    },
-                  },
-                )
-              }
+                  { onError },
+                );
+                toast(t.toastMoved);
+                setMoveOpen(false);
+              }}
             >
               {t.move}
             </Button>

@@ -1,10 +1,11 @@
 "use client";
 
 import { Archive, ArrowDown, ArrowUp, KeyRound, LayoutGrid, MoreHorizontal, Pencil, Plus, RotateCcw, Trash2, Upload } from "lucide-react";
-import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState, type ChangeEvent, type FormEvent } from "react";
 import { IMAGE_ALLOWED_TYPES, ImageUploadError, uploadImage } from "../../lib/upload-image";
 import type { ManagedApplication } from "../../lib/domain";
+import { useRouter } from "../../lib/local-navigation";
+import { useOnlineStatus } from "../../lib/connectivity";
 import {
   useAppUsers,
   useCreateApp,
@@ -28,6 +29,7 @@ export function AppsSettingsPage() {
   const router = useRouter();
   const { profile, status: authStatus } = useAuth();
   const isAdmin = profile?.role === "admin";
+  const online = useOnlineStatus();
 
   useEffect(() => {
     if (authStatus === "ready" && !isAdmin) router.replace("/settings/profile");
@@ -114,6 +116,10 @@ export function AppsSettingsPage() {
     const file = event.target.files?.[0];
     event.target.value = "";
     if (!file) return;
+    if (!online) {
+      toast(t.mediaRequiresOnline, { tone: "error" });
+      return;
+    }
     setUploadingLogo(true);
     try {
       setLogoUrl(await uploadImage(file, "app-logos"));
@@ -371,6 +377,7 @@ export function AppsSettingsPage() {
                   size="sm"
                   variant="secondary"
                   loading={uploadingLogo}
+                  disabled={!online}
                   icon={<Upload size={14} aria-hidden="true" />}
                   onClick={() => logoFileInputRef.current?.click()}
                 >
@@ -400,6 +407,7 @@ export function AppsSettingsPage() {
               />
             </div>
             <p className="field-hint">{t.appLogoHint}</p>
+            {!online && <p className="field-hint">{t.mediaRequiresOnline}</p>}
           </div>
 
           {showLogoUrlField && (

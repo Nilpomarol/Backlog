@@ -1,4 +1,11 @@
-const CACHE_NAME = "backlog-v4";
+try {
+  importScripts("/precache-manifest.js");
+} catch {
+  // The checked-in development manifest is intentionally optional; production builds always
+  // generate it and the build fails if no application assets were discovered.
+}
+
+const CACHE_NAME = `backlog-${self.__BACKLOG_CACHE_VERSION ?? "fallback-v5"}`;
 
 /**
  * Caching strategy, per request kind.
@@ -18,7 +25,14 @@ const CACHE_NAME = "backlog-v4";
  * navigations cache-first, which pinned stale HTML pointing at since-replaced asset hashes and
  * blanked the screen.
  */
-const PRECACHE_URLS = ["/", "/manifest.webmanifest", "/favicon.svg", "/icons/icon-192.png", "/icons/icon-512.png"];
+const PRECACHE_URLS = [
+  "/",
+  "/manifest.webmanifest",
+  "/favicon.svg",
+  "/icons/icon-192.png",
+  "/icons/icon-512.png",
+  ...(self.__BACKLOG_PRECACHE ?? []),
+].filter((url, index, all) => all.indexOf(url) === index);
 
 const isImmutableAsset = (pathname) => pathname.startsWith("/assets/");
 const isRscRequest = (url) => url.pathname.endsWith(".rsc");
@@ -29,12 +43,12 @@ const isStaticAsset = (pathname) =>
 const isCacheable = (response) => response && response.ok && !response.redirected && response.type !== "opaqueredirect";
 
 self.addEventListener("install", (event) => {
-  // The very first visit isn't controlled by this worker, so "/" would otherwise stay uncached
-  // until a second visit. Individually, so one failure can't reject the whole install.
+  // Install atomically. If any hashed application asset is unavailable, the previous worker and
+  // its known-good cache remain active instead of publishing a partially usable offline build.
   event.waitUntil(
     caches
       .open(CACHE_NAME)
-      .then((cache) => Promise.all(PRECACHE_URLS.map((url) => cache.add(url).catch(() => {}))))
+      .then((cache) => cache.addAll(PRECACHE_URLS))
       .then(() => self.skipWaiting()),
   );
 });
@@ -58,24 +72,28 @@ self.addEventListener("activate", (event) => {
  */
 const MATCH = { ignoreVary: true };
 
-/**
- * A page that was never loaded while online has nothing to replay, and it deliberately falls
- * through to the browser's own offline page. Bouncing to the cached "/" shell instead was tried
- * and removed: the shell embeds the RSC payload for "/", so serving it under another path leaves
- * the router and address bar disagreeing, and every indirect route to it (a redirect response, or
- * a stub document calling location.replace) either isn't allowed for navigation requests or can
- * wedge the renderer in a navigation loop. Failing plainly is worth more than a clever recovery
- * that can hang.
- */
+/** Network-first documents retain fresh metadata online; the route-independent root document is
+ * the final offline fallback. ClientRouter reads the real address after hydration, so the shell
+ * and address bar remain consistent even for a route that has never been opened before. */
 async function networkFirst(request) {
   const cache = await caches.open(CACHE_NAME);
   try {
     const response = await fetch(request);
-    if (isCacheable(response)) cache.put(request, response.clone());
+    if (isCacheable(response)) await cache.put(request, response.clone());
+    else if (response.status >= 500) {
+      const fallback = await cache.match(request, MATCH);
+      if (fallback) return fallback;
+    }
     return response;
   } catch (error) {
     const cached = await cache.match(request, MATCH);
     if (cached) return cached;
+    // Every document contains the same client router. Replaying the root document under the
+    // requested URL is therefore safe: after hydration it renders directly from location.
+    if (request.mode === "navigate") {
+      const shell = await cache.match("/", MATCH);
+      if (shell) return shell;
+    }
     throw error;
   }
 }
@@ -85,7 +103,7 @@ async function cacheFirst(request) {
   const cached = await cache.match(request, MATCH);
   if (cached) return cached;
   const response = await fetch(request);
-  if (isCacheable(response)) cache.put(request, response.clone());
+  if (isCacheable(response)) await cache.put(request, response.clone());
   return response;
 }
 

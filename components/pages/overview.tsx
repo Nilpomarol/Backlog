@@ -127,7 +127,8 @@ export function OverviewPage() {
   ).length;
 
   const isPending = appsPending || itemsPending;
-  const isError = appsError || itemsError;
+  // A failed background refresh must not hide a last-known-good offline copy.
+  const isError = (appsError && apps === undefined) || (itemsError && items === undefined);
   const firstName = profile?.name.split(" ")[0] ?? "";
 
   return (
@@ -140,7 +141,7 @@ export function OverviewPage() {
       {isError ? (
         <ErrorState
           title={t.errorLoading}
-          message={describeError(appsErrorValue ?? itemsErrorValue)}
+          message={describeError(apps === undefined ? appsErrorValue : itemsErrorValue)}
           onRetry={() => {
             void refetchApps();
             void refetchItems();

@@ -2,13 +2,14 @@
 
 import { ArrowRight, Inbox, Plus, Star } from "lucide-react";
 import Link from "next/link";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { ACTIVE_STATUSES, BOARD_STATUSES, type Application, type RequestSummary } from "../../lib/domain";
 import { statusLabels } from "../../lib/i18n";
 import { useAllItems, useApps, useErrorMessage, type CrossAppRequest } from "../../lib/queries";
 import { PriorityChip, StatusDot, TypeChip } from "../badges";
 import { useAuth, useLanguage, useT } from "../providers";
-import { AppIcon, SkeletonList } from "../ui/primitives";
+import { NewRequestSheet } from "./new-request";
+import { AppIcon, Button, IconButton, SkeletonList } from "../ui/primitives";
 import { EmptyState, ErrorState } from "../ui/states";
 
 /** Cards shown per column before the rest collapse into a "+N more" link to the real board. */
@@ -33,7 +34,15 @@ function MiniCard({ request }: { request: RequestSummary }) {
 
 /** A compact preview of one app's board: the same four workflow columns as the real board,
  *  trimmed to a handful of cards each — enough to see what's moving without leaving the page. */
-function AppBoard({ app, items }: { app: Application; items: RequestSummary[] }) {
+function AppBoard({
+  app,
+  items,
+  onAddRequest,
+}: {
+  app: Application;
+  items: RequestSummary[];
+  onAddRequest: (appId: string) => void;
+}) {
   const t = useT();
   const { language } = useLanguage();
   const href = `/a/${encodeURIComponent(app.id)}`;
@@ -56,9 +65,9 @@ function AppBoard({ app, items }: { app: Application; items: RequestSummary[] })
           </span>
         </Link>
         <div className="app-board-actions">
-          <Link href={`${href}?new=1`} className="icon-btn" aria-label={t.newRequest}>
+          <IconButton label={t.newRequest} onClick={() => onAddRequest(app.id)}>
             <Plus size={16} aria-hidden="true" />
-          </Link>
+          </IconButton>
           <Link href={href} className="btn btn-secondary btn-sm">
             {t.seeApp}
             <ArrowRight size={14} aria-hidden="true" />
@@ -69,10 +78,9 @@ function AppBoard({ app, items }: { app: Application; items: RequestSummary[] })
       {items.length === 0 ? (
         <div className="app-board-empty">
           <span>{t.appBoardEmpty}</span>
-          <Link href={`${href}?new=1`} className="btn btn-secondary btn-sm">
-            <Plus size={14} aria-hidden="true" />
+          <Button variant="secondary" size="sm" icon={<Plus size={14} aria-hidden="true" />} onClick={() => onAddRequest(app.id)}>
             {t.newRequest}
-          </Link>
+          </Button>
         </div>
       ) : (
         <div className="board" style={{ ["--board-columns" as string]: columns.length }}>
@@ -126,6 +134,15 @@ export function OverviewPage() {
     (item) => item.creatorId === profile?.id && ACTIVE_STATUSES.includes(item.status),
   ).length;
 
+  // Adding a request from the overview opens the sheet right here instead of navigating to the
+  // app's board — the overview is a cross-app landing page, so submitting should leave you on it.
+  const [newRequestAppId, setNewRequestAppId] = useState<string | null>(null);
+  const [newRequestKey, setNewRequestKey] = useState(0);
+  const openNewRequest = (appId: string) => {
+    setNewRequestKey((key) => key + 1);
+    setNewRequestAppId(appId);
+  };
+
   const isPending = appsPending || itemsPending;
   // A failed background refresh must not hide a last-known-good offline copy.
   const isError = (appsError && apps === undefined) || (itemsError && items === undefined);
@@ -176,9 +193,21 @@ export function OverviewPage() {
               }
             />
           ) : (
-            (apps ?? []).map((app) => <AppBoard key={app.id} app={app} items={byApp.get(app.id) ?? []} />)
+            (apps ?? []).map((app) => (
+              <AppBoard key={app.id} app={app} items={byApp.get(app.id) ?? []} onAddRequest={openNewRequest} />
+            ))
           )}
         </>
+      )}
+
+      {newRequestAppId && (
+        <NewRequestSheet
+          key={newRequestKey}
+          appId={newRequestAppId}
+          open={!!newRequestAppId}
+          onClose={() => setNewRequestAppId(null)}
+          navigateOnCreate={false}
+        />
       )}
     </div>
   );

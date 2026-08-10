@@ -39,10 +39,14 @@ export function NewRequestSheet({
   appId,
   open,
   onClose,
+  navigateOnCreate = true,
 }: {
   appId: string;
   open: boolean;
   onClose: () => void;
+  /** Set false when the sheet is opened from a page that isn't itself the app's board (e.g. the
+   *  overview), so creating a request doesn't yank the user away to a board they weren't on. */
+  navigateOnCreate?: boolean;
 }) {
   const { t, language } = useLanguage();
   const router = useRouter();
@@ -126,7 +130,7 @@ export function NewRequestSheet({
     );
     toast(t.toastCreated);
     onClose();
-    router.push(`/r/${encodeURIComponent(id)}`);
+    if (navigateOnCreate) router.push(`/r/${encodeURIComponent(id)}`);
   }
 
   return (

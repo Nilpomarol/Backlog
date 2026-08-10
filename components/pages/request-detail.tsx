@@ -1,52 +1,62 @@
 "use client";
 
-import {
-  ArrowLeft,
-  Check,
-  Eye,
-  FileQuestion,
-  Lock,
-  MoreHorizontal,
-  Pencil,
-  Trash2,
-  FolderInput,
-} from "lucide-react";
+import { ArrowLeft, Eye, FileQuestion, FolderInput, Lock, Pencil, Trash2 } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
 import {
   ALL_STATUSES,
+  ITEM_EFFORTS,
   ITEM_PRIORITIES,
+  ITEM_TYPES,
   canEditRequest,
   canChangeWorkflow,
   canManageSubtasks,
   voteBlockedReason,
+  type ItemEffort,
   type ItemPriority,
   type ItemStatus,
+  type ItemType,
+  type Visibility,
 } from "../../lib/domain";
 import { useBackHref } from "../../lib/board-return";
 import { formatDateTime, formatRelative } from "../../lib/format";
-import { statusLabelsSingular } from "../../lib/i18n";
+import { effortLabels, priorityLabels, statusLabelsSingular, typeLabels } from "../../lib/i18n";
 import { useRouter } from "../../lib/local-navigation";
 import {
   useApps,
   useDeleteRequest,
   useErrorMessage,
   useRequest,
+  useSetEffort,
   useSetPriority,
   useSetStatus,
   useSetVisibility,
   useUpdateRequest,
 } from "../../lib/queries";
-import { AdminChip, EffortChip, InternalChip, PriorityChip, StatusDot, StatusPill, TypeChip, priorityIcons, usePriorityLabel } from "../badges";
+import { AdminChip, EffortChip, InternalChip, PriorityChip, StatusDot, StatusPill, TypeChip, effortIcons, priorityIcons, typeIcons } from "../badges";
 import { ChildCardList } from "../child-cards";
 import { useAuth, useLanguage } from "../providers";
-import { Avatar, Button, SkeletonList } from "../ui/primitives";
-import { ConfirmDialog, Dialog, Menu, MenuItem, MenuSeparator } from "../ui/overlay";
+import { Avatar, Button, IconButton, SkeletonList } from "../ui/primitives";
+import { ConfirmDialog, Dialog, Dropdown, type DropdownOption } from "../ui/overlay";
 import { EmptyState, ErrorState } from "../ui/states";
 import { useToast } from "../ui/toast";
 import { VoteButton } from "../vote-button";
+import { RequestDetailMobile } from "./request-detail-mobile";
 
+/** Desktop (>=1024px) and phone are two independent components rendered together and toggled
+ *  with CSS — see request-detail-mobile.tsx for why the phone layout isn't just this one
+ *  reflowed, and .detail-viewport-desktop/.detail-viewport-mobile in globals.css for the toggle
+ *  itself (same trick app-shell.tsx uses for the sidebar vs. the tabbar). */
 export function RequestDetailPage({ requestId }: { requestId: string }) {
+  return (
+    <>
+      <RequestDetailDesktop requestId={requestId} />
+      <RequestDetailMobile requestId={requestId} />
+    </>
+  );
+}
+
+function RequestDetailDesktop({ requestId }: { requestId: string }) {
   const { t, language } = useLanguage();
   const router = useRouter();
   const { profile } = useAuth();
@@ -59,9 +69,9 @@ export function RequestDetailPage({ requestId }: { requestId: string }) {
   const update = useUpdateRequest();
   const setStatus = useSetStatus();
   const setPriority = useSetPriority();
+  const setEffort = useSetEffort();
   const setVisibility = useSetVisibility();
   const remove = useDeleteRequest();
-  const priorityLabel = usePriorityLabel();
 
   const [editingTitle, setEditingTitle] = useState(false);
   const [titleDraft, setTitleDraft] = useState("");
@@ -80,7 +90,7 @@ export function RequestDetailPage({ requestId }: { requestId: string }) {
   if (isError && request === undefined) {
     const notFound = error instanceof Error && "code" in error && (error as { code: string }).code === "not_found";
     return (
-      <div className="page page-prose">
+      <div className="page page-prose detail-viewport-desktop">
         {notFound ? (
           <EmptyState
             icon={FileQuestion}
@@ -106,7 +116,7 @@ export function RequestDetailPage({ requestId }: { requestId: string }) {
 
   if (isPending || !request) {
     return (
-      <div className="page page-prose">
+      <div className="page page-prose detail-viewport-desktop">
         <SkeletonList count={3} label={t.loading} />
       </div>
     );
@@ -117,8 +127,31 @@ export function RequestDetailPage({ requestId }: { requestId: string }) {
   const mayWorkflow = canChangeWorkflow(profile);
   const maySubtasks = canManageSubtasks(profile, request);
   const isOwnRequest = request.creatorId === profile?.id;
+  const isAdmin = profile?.role === "admin";
   const blocked = voteBlockedReason(profile, request);
   const voteReason = blocked === "own" ? t.voteOwnReason : blocked === "internal" ? t.voteInternalReason : null;
+
+  const statusOptions: DropdownOption<ItemStatus>[] = ALL_STATUSES.map((value) => ({
+    value,
+    label: statusLabelsSingular[language][value],
+    icon: <StatusDot status={value} />,
+  }));
+  const priorityOptions: DropdownOption<ItemPriority>[] = ITEM_PRIORITIES.map((value) => {
+    const Icon = priorityIcons[value];
+    return { value, label: priorityLabels[language][value], icon: <Icon size={13} aria-hidden="true" /> };
+  });
+  const effortOptions: DropdownOption<ItemEffort>[] = ITEM_EFFORTS.map((value) => {
+    const Icon = effortIcons[value];
+    return { value, label: effortLabels[language][value], icon: <Icon size={13} aria-hidden="true" /> };
+  });
+  const typeOptions: DropdownOption<ItemType>[] = ITEM_TYPES.map((value) => {
+    const Icon = typeIcons[value];
+    return { value, label: typeLabels[language][value], icon: <Icon size={13} aria-hidden="true" /> };
+  });
+  const visibilityOptions: DropdownOption<Visibility>[] = [
+    { value: "shared", label: t.shared, icon: <Eye size={13} aria-hidden="true" /> },
+    { value: "internal", label: t.internal, icon: <Lock size={13} aria-hidden="true" /> },
+  ];
 
   function saveTitle() {
     const next = titleDraft.trim();
@@ -141,6 +174,7 @@ export function RequestDetailPage({ requestId }: { requestId: string }) {
   }
 
   function changeStatus(status: ItemStatus) {
+    if (status === request!.status) return;
     const previous = request!.status;
     setStatus.mutate(
       { id: request!.id, status },
@@ -156,6 +190,7 @@ export function RequestDetailPage({ requestId }: { requestId: string }) {
   }
 
   function changePriority(priority: ItemPriority) {
+    if (priority === request!.priority) return;
     const previous = request!.priority;
     setPriority.mutate(
       { id: request!.id, priority },
@@ -170,8 +205,37 @@ export function RequestDetailPage({ requestId }: { requestId: string }) {
     );
   }
 
+  function changeEffort(effort: ItemEffort) {
+    if (effort === request!.effort) return;
+    const previous = request!.effort;
+    setEffort.mutate(
+      { id: request!.id, effort },
+      {
+        onError,
+        onSuccess: () =>
+          toast(t.toastEffortChanged, {
+            actionLabel: t.undo,
+            onAction: () => setEffort.mutate({ id: request!.id, effort: previous }, { onError }),
+          }),
+      },
+    );
+  }
+
+  function changeType(type: ItemType) {
+    if (type === request!.type) return;
+    update.mutate({ id: request!.id, type }, { onError, onSuccess: () => toast(t.toastTypeChanged) });
+  }
+
+  function changeVisibility(visibility: Visibility) {
+    if (visibility === request!.visibility) return;
+    setVisibility.mutate(
+      { id: request!.id, visibility },
+      { onError, onSuccess: () => toast(t.toastVisibilityChanged) },
+    );
+  }
+
   return (
-    <div className="page page-prose">
+    <div className="page page-detail detail-viewport-desktop">
       <nav className="breadcrumb" aria-label={t.backTo}>
         <Link href={boardHref} className="btn btn-ghost btn-sm">
           <ArrowLeft size={14} aria-hidden="true" />
@@ -184,293 +248,308 @@ export function RequestDetailPage({ requestId }: { requestId: string }) {
         )}
       </nav>
 
-      <header className="detail-header">
-        <div className="detail-flags">
-          <TypeChip type={request.type} />
-          <StatusPill status={request.status} />
-          <PriorityChip priority={request.priority} />
-          {request.effort !== "unknown" && <EffortChip effort={request.effort} />}
-          {request.visibility === "internal" && <InternalChip />}
-          {request.creatorRole === "admin" && <AdminChip />}
-
-          <span style={{ marginLeft: "auto" }}>
-            {(mayEdit || mayWorkflow) && (
-              <Menu
-                label={t.requestActions}
-                trigger={(props) => (
-                  <button type="button" className="icon-btn" aria-label={t.requestActions} {...props}>
-                    <MoreHorizontal size={18} aria-hidden="true" />
-                  </button>
-                )}
-              >
-                {(close) => (
-                  <>
-                    {mayEdit && (
-                      <MenuItem
-                        icon={<FolderInput size={15} aria-hidden="true" />}
-                        onClick={() => {
-                          setMoveTarget(request.appId);
-                          setMoveOpen(true);
-                          close();
-                        }}
-                      >
-                        {t.moveToApp}
-                      </MenuItem>
-                    )}
-                    {mayWorkflow && (
-                      <MenuItem
-                        icon={
-                          request.visibility === "internal" ? (
-                            <Eye size={15} aria-hidden="true" />
-                          ) : (
-                            <Lock size={15} aria-hidden="true" />
-                          )
-                        }
-                        onClick={() => {
-                          setVisibility.mutate(
-                            {
-                              id: request.id,
-                              visibility: request.visibility === "internal" ? "shared" : "internal",
-                            },
-                            { onError, onSuccess: () => toast(t.toastVisibilityChanged) },
-                          );
-                          close();
-                        }}
-                      >
-                        {request.visibility === "internal" ? t.makeShared : t.makeInternal}
-                      </MenuItem>
-                    )}
-                    {mayEdit && (
-                      <>
-                        <MenuSeparator />
-                        <MenuItem
-                          danger
-                          icon={<Trash2 size={15} aria-hidden="true" />}
-                          onClick={() => {
-                            setConfirmDelete(true);
-                            close();
-                          }}
-                        >
-                          {t.deleteRequest}
-                        </MenuItem>
-                      </>
-                    )}
-                  </>
-                )}
-              </Menu>
-            )}
-          </span>
-        </div>
-
-        {editingTitle ? (
-          <div>
-            <input
-              className="input input-lg"
-              value={titleDraft}
-              autoFocus
-              maxLength={160}
-              aria-label={t.editTitle}
-              onChange={(event) => setTitleDraft(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === "Enter") {
-                  event.preventDefault();
-                  saveTitle();
-                }
-                if (event.key === "Escape") {
-                  setTitleDraft(request.title);
-                  setEditingTitle(false);
-                }
-              }}
-            />
-            <div className="edit-actions">
-              <Button size="sm" variant="primary" onClick={saveTitle}>
-                {t.saveChanges}
-              </Button>
-              <Button
-                size="sm"
-                variant="ghost"
-                onClick={() => {
-                  setTitleDraft(request.title);
-                  setEditingTitle(false);
-                }}
-              >
-                {t.cancel}
-              </Button>
+      {/* Header, body and properties share one grid: on mobile they stack in reading-priority
+          order (title, then the long-form content, then at-a-glance properties last); from
+          1024px the properties panel becomes a sticky right rail instead — see .detail-grid
+          in globals.css. Source order here also drives desktop tab order (header, then body,
+          then the sidebar), which now matches the visual left-to-right, top-to-bottom reading
+          order too. */}
+      <div className="detail-grid">
+        <div className="detail-grid-header">
+          <header className="detail-header">
+            <div className="detail-flags">
+              <TypeChip type={request.type} />
+              {request.visibility === "internal" && <InternalChip />}
+              {request.creatorRole === "admin" && <AdminChip />}
             </div>
-          </div>
-        ) : mayEdit ? (
-          <button
-            type="button"
-            className="editable"
-            onClick={() => {
-              setTitleDraft(request.title);
-              setEditingTitle(true);
-            }}
-            aria-label={t.editTitle}
-          >
-            <h1 className="detail-title">{request.title}</h1>
-            <Pencil size={16} className="editable-pencil" aria-hidden="true" />
-          </button>
-        ) : (
-          <h1 className="detail-title">{request.title}</h1>
-        )}
 
-        <div className="detail-byline">
-          <Avatar name={request.creatorName} url={request.creatorAvatarUrl} admin={request.creatorRole === "admin"} />
-          <span>
-            {t.reportedBy} <strong>{isOwnRequest ? t.you : request.creatorName}</strong>
-          </span>
-          <span className="meta-dot" aria-hidden="true" />
-          <time dateTime={new Date(request.createdAt).toISOString()} title={formatDateTime(request.createdAt, language)}>
-            {formatRelative(request.createdAt, language)}
-          </time>
-          {request.updatedAt > request.createdAt + 1000 && (
-            <>
-              <span className="meta-dot" aria-hidden="true" />
-              <span>
-                {t.updatedOn}{" "}
-                <time dateTime={new Date(request.updatedAt).toISOString()}>
-                  {formatRelative(request.updatedAt, language)}
-                </time>
-              </span>
-            </>
-          )}
-        </div>
-      </header>
-
-      {/* Description */}
-      <section className="detail-section" aria-labelledby="description-heading">
-        <div className="detail-section-title">
-          <h2 id="description-heading" style={{ font: "inherit", letterSpacing: "inherit" }}>
-            {t.description}
-          </h2>
-        </div>
-
-        {editingDescription ? (
-          <div>
-            <textarea
-              className="textarea"
-              value={descriptionDraft}
-              autoFocus
-              rows={6}
-              maxLength={4000}
-              aria-label={t.editDescription}
-              onChange={(event) => setDescriptionDraft(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === "Escape") {
-                  setDescriptionDraft(request.description ?? "");
-                  setEditingDescription(false);
-                }
-              }}
-            />
-            <div className="edit-actions">
-              <Button size="sm" variant="primary" onClick={saveDescription}>
-                {t.saveChanges}
-              </Button>
-              <Button
-                size="sm"
-                variant="ghost"
-                onClick={() => {
-                  setDescriptionDraft(request.description ?? "");
-                  setEditingDescription(false);
-                }}
-              >
-                {t.cancel}
-              </Button>
-            </div>
-          </div>
-        ) : mayEdit ? (
-          <button
-            type="button"
-            className="editable"
-            onClick={() => {
-              setDescriptionDraft(request.description ?? "");
-              setEditingDescription(true);
-            }}
-            aria-label={t.editDescription}
-          >
-            <span className={`detail-description${request.description ? "" : " detail-description-empty"}`}>
-              {request.description || t.addDescription}
-            </span>
-            <Pencil size={15} className="editable-pencil" aria-hidden="true" />
-          </button>
-        ) : (
-          <p className={`detail-description${request.description ? "" : " detail-description-empty"}`}>
-            {request.description || t.noDescription}
-          </p>
-        )}
-      </section>
-
-      {/* Vote */}
-      <section className="detail-section" aria-labelledby="vote-heading">
-        <h2 id="vote-heading" className="sr-only">
-          {t.votes}
-        </h2>
-        <div className="vote-panel">
-          <VoteButton request={request} size="lg" />
-          {voteReason && <span className="vote-panel-reason">{voteReason}</span>}
-        </div>
-      </section>
-
-      {/* Subtasks */}
-      {!request.parentId && <ChildCardList request={request} canManage={maySubtasks} />}
-
-      {/* Status — only administrators can change it, and everyone already sees the current
-          state as a pill in the header, so this section is theirs alone. */}
-      {mayWorkflow && (
-        <section className="detail-section" aria-labelledby="status-heading">
-          <div className="detail-section-title">
-            <h2 id="status-heading" style={{ font: "inherit", letterSpacing: "inherit" }}>
-              {t.status}
-            </h2>
-          </div>
-          <div className="stepper" role="group" aria-label={t.changeStatus}>
-            {ALL_STATUSES.map((status) => (
+            {editingTitle ? (
+              <div>
+                <input
+                  className="input input-lg"
+                  value={titleDraft}
+                  autoFocus
+                  maxLength={160}
+                  aria-label={t.editTitle}
+                  onChange={(event) => setTitleDraft(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") {
+                      event.preventDefault();
+                      saveTitle();
+                    }
+                    if (event.key === "Escape") {
+                      setTitleDraft(request.title);
+                      setEditingTitle(false);
+                    }
+                  }}
+                />
+                <div className="edit-actions">
+                  <Button size="sm" variant="primary" onClick={saveTitle}>
+                    {t.saveChanges}
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => {
+                      setTitleDraft(request.title);
+                      setEditingTitle(false);
+                    }}
+                  >
+                    {t.cancel}
+                  </Button>
+                </div>
+              </div>
+            ) : mayEdit ? (
               <button
-                key={status}
                 type="button"
-                className="stepper-step"
-                aria-current={request.status === status}
-                disabled={(setStatus.isPending && !setStatus.isPaused) || request.status === status}
-                onClick={() => changeStatus(status)}
+                className="editable"
+                onClick={() => {
+                  setTitleDraft(request.title);
+                  setEditingTitle(true);
+                }}
+                aria-label={t.editTitle}
               >
-                {request.status === status ? <Check size={13} aria-hidden="true" /> : <StatusDot status={status} />}
-                {statusLabelsSingular[language][status]}
+                <h1 className="detail-title">{request.title}</h1>
+                <Pencil size={16} className="editable-pencil" aria-hidden="true" />
               </button>
-            ))}
-          </div>
-        </section>
-      )}
+            ) : (
+              <h1 className="detail-title">{request.title}</h1>
+            )}
 
-      {/* Priority — same admin-only triage action as status, kept as its own section so it stays
-          scannable rather than folded into the status stepper above. */}
-      {mayWorkflow && (
-        <section className="detail-section" aria-labelledby="priority-heading">
-          <div className="detail-section-title">
-            <h2 id="priority-heading" style={{ font: "inherit", letterSpacing: "inherit" }}>
-              {t.priority}
-            </h2>
-          </div>
-          <div className="stepper" role="group" aria-label={t.changePriority}>
-            {ITEM_PRIORITIES.map((priority) => {
-              const Icon = priorityIcons[priority];
-              return (
-                <button
-                  key={priority}
-                  type="button"
-                  className="stepper-step"
-                  aria-current={request.priority === priority}
-                  disabled={(setPriority.isPending && !setPriority.isPaused) || request.priority === priority}
-                  onClick={() => changePriority(priority)}
+            <div className="detail-byline">
+              <Avatar name={request.creatorName} url={request.creatorAvatarUrl} admin={request.creatorRole === "admin"} />
+              <span>
+                {t.reportedBy} <strong>{isOwnRequest ? t.you : request.creatorName}</strong>
+              </span>
+              <span className="meta-dot" aria-hidden="true" />
+              <time dateTime={new Date(request.createdAt).toISOString()} title={formatDateTime(request.createdAt, language)}>
+                {formatRelative(request.createdAt, language)}
+              </time>
+              {request.updatedAt > request.createdAt + 1000 && (
+                <>
+                  <span className="meta-dot" aria-hidden="true" />
+                  <span>
+                    {t.updatedOn}{" "}
+                    <time dateTime={new Date(request.updatedAt).toISOString()}>
+                      {formatRelative(request.updatedAt, language)}
+                    </time>
+                  </span>
+                </>
+              )}
+            </div>
+          </header>
+        </div>
+
+        <div className="detail-grid-body">
+          {/* Description */}
+          <section className="detail-section" aria-labelledby="description-heading">
+            <div className="detail-section-title">
+              <h2 id="description-heading" style={{ font: "inherit", letterSpacing: "inherit" }}>
+                {t.description}
+              </h2>
+            </div>
+
+            {editingDescription ? (
+              <div>
+                <textarea
+                  className="textarea"
+                  value={descriptionDraft}
+                  autoFocus
+                  rows={6}
+                  maxLength={4000}
+                  aria-label={t.editDescription}
+                  onChange={(event) => setDescriptionDraft(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Escape") {
+                      setDescriptionDraft(request.description ?? "");
+                      setEditingDescription(false);
+                    }
+                  }}
+                />
+                <div className="edit-actions">
+                  <Button size="sm" variant="primary" onClick={saveDescription}>
+                    {t.saveChanges}
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => {
+                      setDescriptionDraft(request.description ?? "");
+                      setEditingDescription(false);
+                    }}
+                  >
+                    {t.cancel}
+                  </Button>
+                </div>
+              </div>
+            ) : mayEdit ? (
+              <button
+                type="button"
+                className="editable"
+                onClick={() => {
+                  setDescriptionDraft(request.description ?? "");
+                  setEditingDescription(true);
+                }}
+                aria-label={t.editDescription}
+              >
+                <span className={`detail-description${request.description ? "" : " detail-description-empty"}`}>
+                  {request.description || t.addDescription}
+                </span>
+                <Pencil size={15} className="editable-pencil" aria-hidden="true" />
+              </button>
+            ) : (
+              <p className={`detail-description${request.description ? "" : " detail-description-empty"}`}>
+                {request.description || t.noDescription}
+              </p>
+            )}
+          </section>
+
+          {/* Subtasks */}
+          {!request.parentId && <ChildCardList request={request} canManage={maySubtasks} />}
+        </div>
+
+        <aside className="detail-grid-sidebar" aria-label={t.properties}>
+          <div className="properties-panel">
+            <p className="properties-panel-title">{t.properties}</p>
+
+            <div className="property-row">
+              <span className="property-label">{t.votes}</span>
+              <div className="property-value">
+                <VoteButton request={request} size="lg" />
+              </div>
+            </div>
+            {!isAdmin && voteReason && <p className="property-hint">{voteReason}</p>}
+
+            <div className="property-row">
+              <span className="property-label">{t.status}</span>
+              <div className="property-value">
+                {mayWorkflow ? (
+                  <Dropdown
+                    compact
+                    label={t.changeStatus}
+                    value={request.status}
+                    onChange={changeStatus}
+                    disabled={setStatus.isPending && !setStatus.isPaused}
+                    options={statusOptions}
+                  />
+                ) : (
+                  <StatusPill status={request.status} />
+                )}
+              </div>
+            </div>
+
+            <div className="property-row">
+              <span className="property-label">{t.priority}</span>
+              <div className="property-value">
+                {mayWorkflow ? (
+                  <Dropdown
+                    compact
+                    label={t.changePriority}
+                    value={request.priority}
+                    onChange={changePriority}
+                    disabled={setPriority.isPending && !setPriority.isPaused}
+                    options={priorityOptions}
+                  />
+                ) : (
+                  <PriorityChip priority={request.priority} />
+                )}
+              </div>
+            </div>
+
+            <div className="property-row">
+              <span className="property-label">{t.effort}</span>
+              <div className="property-value">
+                {mayWorkflow ? (
+                  <Dropdown
+                    compact
+                    label={t.changeEffort}
+                    value={request.effort}
+                    onChange={changeEffort}
+                    disabled={setEffort.isPending && !setEffort.isPaused}
+                    options={effortOptions}
+                  />
+                ) : (
+                  <EffortChip effort={request.effort} />
+                )}
+              </div>
+            </div>
+
+            <div className="property-row">
+              <span className="property-label">{t.type}</span>
+              <div className="property-value">
+                {mayEdit ? (
+                  <Dropdown
+                    compact
+                    label={t.changeType}
+                    value={request.type}
+                    onChange={changeType}
+                    disabled={update.isPending && !update.isPaused}
+                    options={typeOptions}
+                  />
+                ) : (
+                  <TypeChip type={request.type} />
+                )}
+              </div>
+            </div>
+
+            <div className="property-row">
+              <span className="property-label">{t.visibility}</span>
+              <div className="property-value">
+                {mayWorkflow ? (
+                  <Dropdown
+                    compact
+                    label={t.changeVisibility}
+                    value={request.visibility}
+                    onChange={changeVisibility}
+                    disabled={setVisibility.isPending && !setVisibility.isPaused}
+                    options={visibilityOptions}
+                  />
+                ) : request.visibility === "internal" ? (
+                  <InternalChip />
+                ) : (
+                  <span className="chip chip-neutral">
+                    <Eye size={11} aria-hidden="true" />
+                    {t.shared}
+                  </span>
+                )}
+              </div>
+            </div>
+
+            <div className="property-row">
+              <span className="property-label">{t.appLabel}</span>
+              <div className="property-value">
+                <span className="property-value-text">{app?.name}</span>
+                {mayEdit && (
+                  <IconButton
+                    label={t.changeApp}
+                    size="sm"
+                    onClick={() => {
+                      setMoveTarget(request.appId);
+                      setMoveOpen(true);
+                    }}
+                  >
+                    <FolderInput size={14} aria-hidden="true" />
+                  </IconButton>
+                )}
+              </div>
+            </div>
+
+            {mayEdit && (
+              <div className="properties-panel-danger">
+                <Button
+                  variant="danger-quiet"
+                  size="sm"
+                  block
+                  icon={<Trash2 size={14} aria-hidden="true" />}
+                  onClick={() => setConfirmDelete(true)}
                 >
-                  {request.priority === priority ? <Check size={13} aria-hidden="true" /> : <Icon size={13} aria-hidden="true" />}
-                  {priorityLabel(priority)}
-                </button>
-              );
-            })}
+                  {t.deleteRequest}
+                </Button>
+              </div>
+            )}
           </div>
-        </section>
-      )}
+        </aside>
+      </div>
 
       <ConfirmDialog
         open={confirmDelete}

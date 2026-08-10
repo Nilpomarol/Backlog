@@ -339,25 +339,37 @@ export function Dropdown<T extends string>({
   onChange,
   label,
   id,
+  compact,
+  disabled,
 }: {
   value: T;
   options: DropdownOption<T>[];
   onChange: (value: T) => void;
   label: string;
   id?: string;
+  /** Pill-sized trigger with an auto-width popover, for a value sitting inline in a property
+   *  row rather than a full-width form field. */
+  compact?: boolean;
+  disabled?: boolean;
 }) {
   const current = options.find((option) => option.value === value);
   return (
     <Menu
       label={label}
-      panelClassName="dropdown-panel"
+      panelClassName={classes("dropdown-panel", compact && "dropdown-panel-auto")}
       trigger={(props) => (
-        <button type="button" id={id} className="dropdown-trigger" {...props}>
+        <button
+          type="button"
+          id={id}
+          className={classes("dropdown-trigger", compact && "dropdown-trigger-compact")}
+          disabled={disabled}
+          {...props}
+        >
           <span className="dropdown-trigger-value">
             {current?.icon}
             {current?.label}
           </span>
-          <ChevronDown size={16} aria-hidden="true" />
+          <ChevronDown size={compact ? 14 : 16} aria-hidden="true" />
         </button>
       )}
     >

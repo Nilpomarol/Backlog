@@ -570,6 +570,19 @@ api.patch("/items/:id/priority", async (context) => {
   return context.json({ data: { id: item.id, priority: parsed.data.priority } });
 });
 
+api.patch("/items/:id/effort", async (context) => {
+  const parsed = z.object({ effort: itemEffort, baseUpdatedAt: z.number().int().nonnegative().optional(), updatedAt: z.number().int().positive().optional() }).strict().safeParse(await context.req.json().catch(() => null));
+  if (!parsed.success) return context.json({ error: { code: "invalid_request", message: parsed.error.issues[0]?.message } }, 400);
+  const currentUser = context.get("user");
+  if (!canChangeWorkflow(currentUser)) return context.json({ error: { code: "forbidden", message: "Only administrators can set implementation effort." } }, 403);
+  const client = getClient(context.env);
+  const item = await findItem(client, context.req.param("id"));
+  if (!item) return context.json({ error: { code: "not_found", message: "Request not found." } }, 404);
+  if (revisionConflicts(parsed.data.baseUpdatedAt, item.updatedAt)) return context.json({ error: { code: "conflict", message: "This request changed on another device." } }, 409);
+  await client.execute({ sql: "UPDATE backlog_items SET effort = ?, updated_at = ? WHERE id = ?", args: [parsed.data.effort, parsed.data.updatedAt ?? Date.now(), item.id] });
+  return context.json({ data: { id: item.id, effort: parsed.data.effort } });
+});
+
 api.patch("/items/:id/visibility", async (context) => {
   const parsed = z.object({ visibility: itemVisibility, baseUpdatedAt: z.number().int().nonnegative().optional(), updatedAt: z.number().int().positive().optional() }).strict().safeParse(await context.req.json().catch(() => null));
   if (!parsed.success) return context.json({ error: { code: "invalid_request", message: parsed.error.issues[0]?.message } }, 400);

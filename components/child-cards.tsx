@@ -1,6 +1,6 @@
 "use client";
 
-import { Link2, Plus, Trash2, Unlink } from "lucide-react";
+import { Link2, ListChecks, Plus, Trash2, Unlink } from "lucide-react";
 import NextLink from "next/link";
 import { useState } from "react";
 import { canEditRequest, type RequestDetail } from "../lib/domain";
@@ -12,9 +12,9 @@ import {
   useUpdateChecklistItem,
   useUpdateRequest,
 } from "../lib/queries";
-import { StatusPill } from "./badges";
+import { PriorityChip, StatusPill, TypeChip } from "./badges";
 import { useAuth, useT } from "./providers";
-import { Button, IconButton, TextField } from "./ui/primitives";
+import { Button, IconButton, SubtaskProgress, TextField } from "./ui/primitives";
 import { Dialog } from "./ui/overlay";
 import { useToast } from "./ui/toast";
 import { classes } from "../lib/format";
@@ -39,6 +39,8 @@ function ChecklistSection({ request, canManage }: { request: RequestDetail; canM
     create.mutate({ id: crypto.randomUUID(), requestId: request.id, title }, { onError });
   }
 
+  const doneCount = request.checklist.filter((entry) => entry.done).length;
+
   return (
     <section className="detail-section" aria-labelledby="checklist-heading">
       <div className="detail-section-title">
@@ -48,9 +50,14 @@ function ChecklistSection({ request, canManage }: { request: RequestDetail; canM
       </div>
 
       {request.checklist.length === 0 ? (
-        <p className="field-hint">{t.noChecklistItems}</p>
+        <p className="section-empty">
+          <ListChecks size={14} aria-hidden="true" />
+          {t.noChecklistItems}
+        </p>
       ) : (
-        <ul className="subtask-list">
+        <>
+          <SubtaskProgress done={doneCount} total={request.checklist.length} label={t.checklist} />
+          <ul className="subtask-list" style={{ marginTop: "var(--space-3)" }}>
           {request.checklist.map((entry) => (
             <li className="subtask-row" key={entry.id}>
               <input
@@ -78,7 +85,8 @@ function ChecklistSection({ request, canManage }: { request: RequestDetail; canM
               )}
             </li>
           ))}
-        </ul>
+          </ul>
+        </>
       )}
 
       {canManage && (
@@ -202,12 +210,17 @@ function LinkedCardsSection({ request, canManage }: { request: RequestDetail; ca
       </div>
 
       {request.children.length === 0 ? (
-        <p className="field-hint">{t.noLinkedCards}</p>
+        <p className="section-empty">
+          <Link2 size={14} aria-hidden="true" />
+          {t.noLinkedCards}
+        </p>
       ) : (
         <ul className="subtask-list">
           {request.children.map((child) => (
             <li className="subtask-row" key={child.id}>
+              <TypeChip type={child.type} iconOnly />
               <StatusPill status={child.status} />
+              {child.priority !== "none" && <PriorityChip priority={child.priority} iconOnly />}
               <NextLink href={`/r/${encodeURIComponent(child.id)}`} className="subtask-title card-link">
                 {child.title}
               </NextLink>

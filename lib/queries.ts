@@ -25,6 +25,7 @@ import {
   mutationKeys,
   removeInvitationMutationFn,
   setAppUsersMutationFn,
+  setEffortMutationFn,
   setPriorityMutationFn,
   setStatusMutationFn,
   setUserAccessMutationFn,
@@ -44,6 +45,7 @@ import {
   type UpdateAppInput,
   type UpdateChecklistItemInput,
   type UpdateRequestInput,
+  type VersionedEffortInput,
   type VersionedPriorityInput,
   type VersionedStatusInput,
   type VersionedVisibilityInput,
@@ -435,6 +437,23 @@ export function useSetPriority() {
       const snapshot = await snapshotRequestCaches(client, id);
       prepareRequestRevision(input, snapshot);
       patchRequestCaches(client, id, (item) => ({ ...item, priority, updatedAt: input.updatedAt! }));
+      return { ...snapshot, id };
+    },
+    onError: (_error, _input, context) => restoreRequestCaches(client, context?.id ?? "", context),
+    onSettled: (_data, _error, { id }) => invalidateRequestData(client, id),
+  });
+}
+
+export function useSetEffort() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationKey: mutationKeys.setEffort,
+    mutationFn: setEffortMutationFn,
+    onMutate: async (input: VersionedEffortInput) => {
+      const { id, effort } = input;
+      const snapshot = await snapshotRequestCaches(client, id);
+      prepareRequestRevision(input, snapshot);
+      patchRequestCaches(client, id, (item) => ({ ...item, effort, updatedAt: input.updatedAt! }));
       return { ...snapshot, id };
     },
     onError: (_error, _input, context) => restoreRequestCaches(client, context?.id ?? "", context),

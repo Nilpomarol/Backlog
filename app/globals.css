@@ -38,6 +38,9 @@
   --type-task-text: #496054;
   --type-task-bg: #eaf0e9;
   --type-task-solid: #597060;
+  --type-investigation-text: #2e4c7a;
+  --type-investigation-bg: #e7ecf5;
+  --type-investigation-solid: #3f5f97;
 
   /* --- Priority semantics (urgency ramp: red → grey, distinct from the type hues above) --- */
   --priority-urgent-text: #9c2b23;
@@ -580,6 +583,7 @@ ul, ol { margin: 0; padding: 0; list-style: none; }
 .chip-feature     { background: var(--type-feature-bg);     color: var(--type-feature-text); }
 .chip-improvement { background: var(--type-improvement-bg); color: var(--type-improvement-text); }
 .chip-task        { background: var(--type-task-bg);        color: var(--type-task-text); }
+.chip-investigation { background: var(--type-investigation-bg); color: var(--type-investigation-text); }
 .chip-neutral     { background: var(--surface-sunken);      color: var(--text-secondary); }
 .chip-internal    { background: var(--type-task-bg);        color: var(--type-task-text); }
 .chip-priority-urgent { background: var(--priority-urgent-bg); color: var(--priority-urgent-text); }
@@ -607,6 +611,7 @@ ul, ol { margin: 0; padding: 0; list-style: none; }
 .type-badge-feature     { background: var(--type-feature-solid);     color: #fff; }
 .type-badge-improvement { background: var(--type-improvement-solid); color: #fff; }
 .type-badge-task        { background: var(--type-task-solid);        color: #fff; }
+.type-badge-investigation { background: var(--type-investigation-solid); color: #fff; }
 .priority-badge-urgent { background: var(--priority-urgent-solid); color: #fff; }
 .priority-badge-high   { background: var(--priority-high-solid);   color: #fff; }
 .priority-badge-medium { background: var(--priority-medium-solid); color: #fff; }

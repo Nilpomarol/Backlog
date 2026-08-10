@@ -611,10 +611,7 @@ export function AppBacklogPage({ appId }: { appId: string }) {
   const [selected, setSelected] = useState<string[]>([]);
   const [draggedId, setDraggedId] = useState<string | null>(null);
   const [dragOverStatus, setDragOverStatus] = useState<ItemStatus | null>(null);
-  // The header "+" and the tabbar/overview "new request" links point at `?new=1` (see
-  // AppShell and overview.tsx) so opening the composer never leaves the board behind in
-  // history — see components/pages/new-request.tsx.
-  const [newOpen, setNewOpen] = useState(() => searchParams.get("new") === "1");
+  const [newOpen, setNewOpen] = useState(false);
   // Remounts the sheet each time it opens, so its form state (title, description, ...) always
   // starts blank instead of carrying over a previous draft.
   const [newRequestKey, setNewRequestKey] = useState(0);
@@ -622,15 +619,22 @@ export function AppBacklogPage({ appId }: { appId: string }) {
     setNewRequestKey((key) => key + 1);
     setNewOpen(true);
   };
+  // The header "+" and the FAB/overview "new request" links point at `?new=1` (see AppShell
+  // and overview.tsx) so opening the composer never leaves the board behind in history — see
+  // components/pages/new-request.tsx. Reacts to every arrival of `new=1`, not just the initial
+  // mount, so the FAB/links still open the sheet when the board was already on screen (e.g. the
+  // FAB is a link, so it doesn't remount this page when you're already viewing this board).
   useEffect(() => {
     if (searchParams.get("new") !== "1") return;
+    setNewRequestKey((key) => key + 1);
+    setNewOpen(true);
     const next = new URLSearchParams(searchParams.toString());
     next.delete("new");
     const query = next.toString();
     router.replace(query ? `?${query}` : "?", { scroll: false });
-    // Only reacts to the initial "new=1" arriving via URL; not a general searchParams sync.
+    // router/setNewOpen/setNewRequestKey are stable; re-running per new searchParams is the point.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [searchParams]);
 
   const app = apps.find((entry) => entry.id === appId);
   const visible = useMemo(() => applyFilters(items ?? [], filters, profile?.id), [items, filters, profile?.id]);

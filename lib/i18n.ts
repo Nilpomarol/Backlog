@@ -624,8 +624,8 @@ export const statusLabelsSingular: Record<Language, Record<ItemStatus, string>> 
 };
 
 export const typeLabels: Record<Language, Record<ItemType, string>> = {
-  ca: { bug: "Error", feature: "Funcionalitat", improvement: "Millora", task: "Tasca" },
-  en: { bug: "Bug", feature: "Feature", improvement: "Improvement", task: "Task" },
+  ca: { bug: "Error", feature: "Funcionalitat", improvement: "Millora", task: "Tasca", investigation: "Investigació" },
+  en: { bug: "Bug", feature: "Feature", improvement: "Improvement", task: "Task", investigation: "Investigation" },
 };
 
 export const priorityLabels: Record<Language, Record<ItemPriority, string>> = {

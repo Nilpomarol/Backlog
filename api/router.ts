@@ -18,7 +18,7 @@ export type ApiEnvironment = DatabaseEnvironment & {
 type Variables = { user: AppUser; requestId: string };
 export const api = new Hono<{ Bindings: ApiEnvironment; Variables: Variables }>().basePath("/api");
 
-const itemType = z.enum(["bug", "feature", "improvement", "task"]);
+const itemType = z.enum(["bug", "feature", "improvement", "task", "investigation"]);
 const itemStatus = z.enum(["backlog", "in_progress", "in_review", "done", "discarded"]);
 const itemPriority = z.enum(["urgent", "high", "medium", "low", "none"]);
 const itemEffort = z.enum(["small", "medium", "large", "unknown"]);

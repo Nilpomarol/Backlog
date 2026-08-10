@@ -1,6 +1,6 @@
 "use client";
 
-import { Bug, ChevronDown, ChevronsUp, ChevronUp, CircleDashed, Feather, Gauge, Lightbulb, Lock, Minus, Mountain, ShieldCheck, TrendingUp, Wrench } from "lucide-react";
+import { Bug, ChevronDown, ChevronsUp, ChevronUp, CircleDashed, Feather, Gauge, Lightbulb, Lock, Minus, Mountain, Search, ShieldCheck, TrendingUp, Wrench } from "lucide-react";
 import type { ItemEffort, ItemPriority, ItemStatus, ItemType } from "../lib/domain";
 import { useLanguage } from "./providers";
 import { effortLabels, priorityLabels, statusLabels, statusLabelsSingular, typeLabels } from "../lib/i18n";
@@ -11,6 +11,7 @@ const typeIcons: Record<ItemType, typeof Bug> = {
   feature: Lightbulb,
   improvement: TrendingUp,
   task: Wrench,
+  investigation: Search,
 };
 
 export function TypeChip({

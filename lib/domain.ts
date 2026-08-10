@@ -1,5 +1,5 @@
 export type Role = "admin" | "user";
-export type ItemType = "bug" | "feature" | "improvement" | "task";
+export type ItemType = "bug" | "feature" | "improvement" | "task" | "investigation";
 export type ItemStatus = "backlog" | "in_progress" | "in_review" | "done" | "discarded";
 export type ItemPriority = "urgent" | "high" | "medium" | "low" | "none";
 export type ItemEffort = "small" | "medium" | "large" | "unknown";
@@ -93,7 +93,7 @@ export type SimilarRequest = {
  *  reached through the "show discarded" filter instead of occupying a fifth of the board. */
 export const BOARD_STATUSES: ItemStatus[] = ["backlog", "in_progress", "in_review", "done"];
 export const ALL_STATUSES: ItemStatus[] = [...BOARD_STATUSES, "discarded"];
-export const ITEM_TYPES: ItemType[] = ["bug", "feature", "improvement", "task"];
+export const ITEM_TYPES: ItemType[] = ["bug", "feature", "improvement", "task", "investigation"];
 
 /** Most urgent first — the order every priority picker/stepper renders in. */
 export const ITEM_PRIORITIES: ItemPriority[] = ["urgent", "high", "medium", "low", "none"];

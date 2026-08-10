@@ -1,7 +1,7 @@
 "use client";
 
-import { QueryClient, QueryClientProvider, useQuery, useQueryClient } from "@tanstack/react-query";
-import { persistQueryClient } from "@tanstack/query-persist-client-core";
+import { QueryClient, useIsRestoring, useQuery, useQueryClient } from "@tanstack/react-query";
+import { PersistQueryClientProvider } from "@tanstack/react-query-persist-client";
 import { createAsyncStoragePersister } from "@tanstack/query-async-storage-persister";
 import type { User as FirebaseUser } from "firebase/auth";
 import {
@@ -10,7 +10,6 @@ import {
   useContext,
   useEffect,
   useMemo,
-  useRef,
   useState,
   useSyncExternalStore,
   type ReactNode,
@@ -214,22 +213,6 @@ function AuthProvider({ children }: { children: ReactNode }) {
             ? "ready"
             : "loading";
 
-  // Restores cached queries and paused mutations from IndexedDB so boards/cards already seen —
-  // and edits made while offline — survive a reload. Done imperatively (rather than via
-  // <PersistQueryClientProvider>) since that component crashes under this app's RSC/multi-
-  // environment Vite setup; a plain effect sidesteps it since effects never run during SSR.
-  const restoredRef = useRef<Promise<void>>(undefined);
-  useEffect(() => {
-    const [unsubscribe, restored] = persistQueryClient({
-      queryClient,
-      persister: createAsyncStoragePersister({ storage: idbStorage }),
-      maxAge: 7 * 24 * 60 * 60_000,
-      buster: "v1",
-    });
-    restoredRef.current = restored;
-    return unsubscribe;
-  }, [queryClient]);
-
   // Offline-queued mutations need the *current* requester, not the one captured when they were
   // first called (which no longer exists after a reload) — see lib/active-requester.ts.
   useEffect(() => {
@@ -239,10 +222,15 @@ function AuthProvider({ children }: { children: ReactNode }) {
   // Paused mutations already resume automatically the moment the browser comes back online (a
   // built-in QueryClient behaviour). This covers the one gap that doesn't: a reload that lands
   // already online, where no further "online" transition will ever fire to trigger it.
+  //
+  // Deliberately waits for `status === "ready"` rather than resuming as soon as the cache is
+  // restored: a resumed mutation calls getActiveRequester(), so firing it before sign-in resolves
+  // would throw, fail the mutation, and silently discard the queued offline write.
+  const isRestoring = useIsRestoring();
   useEffect(() => {
-    if (status !== "ready") return;
-    void restoredRef.current?.then(() => queryClient.resumePausedMutations());
-  }, [status, queryClient]);
+    if (isRestoring || status !== "ready") return;
+    void queryClient.resumePausedMutations();
+  }, [isRestoring, status, queryClient]);
 
   const value = useMemo<AuthContextValue>(
     () => ({
@@ -289,19 +277,29 @@ export function Providers({ children }: { children: ReactNode }) {
         },
       },
     });
-    // Registered before any restore can happen (see AuthProvider), so a mutation resumed from
-    // IndexedDB — its original closure long gone — still knows how to execute.
+    // Registered before any restore can happen, so a mutation resumed from IndexedDB — its
+    // original closure long gone — still knows how to execute.
     registerOfflineMutationDefaults(client);
     return client;
   });
+  // Storage methods only touch indexedDB when called (never during SSR render), so building the
+  // persister up front is safe.
+  const [persister] = useState(() => createAsyncStoragePersister({ storage: idbStorage }));
 
+  // Restores the cached queries and any offline-queued mutations from IndexedDB. Using the
+  // provider rather than calling persistQueryClient() directly is what supplies React Query's
+  // `isRestoring` flag, which suspends every query from fetching until the restore lands —
+  // without it, queries fire against an empty cache first and race the restored data.
   return (
-    <QueryClientProvider client={queryClient}>
+    <PersistQueryClientProvider
+      client={queryClient}
+      persistOptions={{ persister, maxAge: 7 * 24 * 60 * 60_000, buster: "v1" }}
+    >
       <LanguageProvider>
         <ToastLayer>
           <AuthProvider>{children}</AuthProvider>
         </ToastLayer>
       </LanguageProvider>
-    </QueryClientProvider>
+    </PersistQueryClientProvider>
   );
 }

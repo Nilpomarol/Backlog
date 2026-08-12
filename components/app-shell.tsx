@@ -44,9 +44,7 @@ function PendingShell() {
     <div className="app-shell">
       <nav className="sidebar" aria-label={t.primaryNavigation}>
         <div className="brand">
-          <span className="brand-mark">
-            <LayoutGrid size={15} aria-hidden="true" />
-          </span>
+          <span className="brand-mark" aria-hidden="true" />
           {t.appName}
         </div>
         <div className="nav-group">
@@ -98,9 +96,7 @@ function SignInScreen() {
   const online = useOnlineStatus();
   return (
     <AuthShell>
-      <span className="auth-mark">
-        <LayoutGrid size={22} aria-hidden="true" />
-      </span>
+      <span className="auth-mark" aria-hidden="true" />
       <h1 className="auth-title">{t.signInTitle}</h1>
       <p className="auth-body">{t.signInBody}</p>
       {!online && <p className="field-hint">{t.signInRequiresOnline}</p>}
@@ -128,9 +124,7 @@ function NoAccessScreen() {
   const { email, signOut } = useAuth();
   return (
     <AuthShell>
-      <span className="auth-mark">
-        <LayoutGrid size={22} aria-hidden="true" />
-      </span>
+      <span className="auth-mark" aria-hidden="true" />
       <h1 className="auth-title">{t.noAccessTitle}</h1>
       <p className="auth-body">{t.noAccessBody}</p>
       {email && (
@@ -270,9 +264,7 @@ function ReadyShell({ children }: { children: ReactNode }) {
 
       <nav className="sidebar" aria-label={t.primaryNavigation}>
         <div className="brand">
-          <span className="brand-mark">
-            <LayoutGrid size={15} aria-hidden="true" />
-          </span>
+          <span className="brand-mark" aria-hidden="true" />
           {t.appName}
         </div>
 

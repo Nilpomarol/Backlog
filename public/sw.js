@@ -28,7 +28,9 @@ const CACHE_NAME = `backlog-${self.__BACKLOG_CACHE_VERSION ?? "fallback-v5"}`;
 const PRECACHE_URLS = [
   "/",
   "/manifest.webmanifest",
-  "/favicon.svg",
+  "/favicon.ico",
+  "/favicon.png",
+  "/icons/logo.png",
   "/icons/icon-192.png",
   "/icons/icon-512.png",
   ...(self.__BACKLOG_PRECACHE ?? []),
@@ -37,7 +39,7 @@ const PRECACHE_URLS = [
 const isImmutableAsset = (pathname) => pathname.startsWith("/assets/");
 const isRscRequest = (url) => url.pathname.endsWith(".rsc");
 const isStaticAsset = (pathname) =>
-  /^\/(icons\/|favicon\.svg$|manifest\.webmanifest$|og\.png$)/.test(pathname) || pathname.endsWith(".svg");
+  /^\/(icons\/|favicon\.(?:ico|png)$|manifest\.webmanifest$|og\.png$)/.test(pathname) || pathname.endsWith(".svg");
 
 /** Only store responses that are actually replayable. */
 const isCacheable = (response) => response && response.ok && !response.redirected && response.type !== "opaqueredirect";

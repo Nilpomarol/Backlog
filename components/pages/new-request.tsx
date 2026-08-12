@@ -139,6 +139,7 @@ export function NewRequestSheet({
       title={t.newRequestTitle}
       subtitle={t.newRequestSubtitle}
       closeLabel={t.close}
+      className="sheet-new-request"
       footer={
         <>
           <Button variant="secondary" onClick={onClose}>
@@ -230,7 +231,7 @@ export function NewRequestSheet({
         )}
 
         {(isAdmin || detailsOpen) && (
-          <div className="disclosure-body" id="new-request-details" style={{ paddingTop: 0 }}>
+          <div className="disclosure-body" id="new-request-details">
             <TextAreaField
               label={t.descriptionLabel}
               optional={t.optional}

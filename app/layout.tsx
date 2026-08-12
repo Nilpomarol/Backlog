@@ -8,7 +8,7 @@ import { ServiceWorker } from "../components/service-worker";
 import "./globals.css";
 
 export const viewport: Viewport = {
-  themeColor: "#a94f2c",
+  themeColor: "#0d1226",
 };
 
 const geistSans = Geist({
@@ -36,8 +36,11 @@ export async function generateMetadata(): Promise<Metadata> {
     },
     description,
     icons: {
-      icon: "/favicon.svg",
-      shortcut: "/favicon.svg",
+      icon: [
+        { url: "/favicon.ico", sizes: "any" },
+        { url: "/favicon.png", type: "image/png", sizes: "64x64" },
+      ],
+      shortcut: "/favicon.ico",
       apple: "/icons/apple-touch-icon.png",
     },
     manifest: "/manifest.webmanifest",
@@ -51,7 +54,7 @@ export async function generateMetadata(): Promise<Metadata> {
       description,
       type: "website",
       url: origin,
-      images: [{ url: `${origin}/og.png`, width: 1731, height: 909, alt: "Backlog — Shape what’s next." }],
+      images: [{ url: `${origin}/og.png`, width: 1200, height: 630, alt: "Backlog — Shape what’s next." }],
     },
     twitter: {
       card: "summary_large_image",

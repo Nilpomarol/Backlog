@@ -2,7 +2,7 @@
 
 import { ArrowRight, Inbox, Plus, Star } from "lucide-react";
 import { useMemo, useState } from "react";
-import { ACTIVE_STATUSES, BOARD_STATUSES, type Application, type ItemStatus, type RequestSummary } from "../../lib/domain";
+import { ACTIVE_STATUSES, BOARD_STATUSES, type Application, type RequestSummary } from "../../lib/domain";
 import { statusLabels } from "../../lib/i18n";
 import { Link } from "../../lib/local-navigation";
 import { useAllItems, useApps, useErrorMessage, type CrossAppRequest } from "../../lib/queries";
@@ -29,20 +29,6 @@ function MiniCard({ request }: { request: RequestSummary }) {
       <span className="mini-card-title">{request.title}</span>
       {request.votes > 0 && <span className="mini-card-votes">{request.votes}</span>}
     </Link>
-  );
-}
-
-/** One status's count across every app the user can see — the home page's at-a-glance KPI row. */
-function KpiTile({ status, count }: { status: ItemStatus; count: number }) {
-  const { language } = useLanguage();
-  return (
-    <div className="kpi-tile">
-      <span className="kpi-value">{count}</span>
-      <span className="kpi-label">
-        <StatusDot status={status} />
-        {statusLabels[language][status]}
-      </span>
-    </div>
   );
 }
 
@@ -183,14 +169,6 @@ export function OverviewPage() {
         <SkeletonList count={4} label={t.loading} />
       ) : (
         <>
-          {(apps ?? []).length > 0 && (
-            <div className="kpi-grid">
-              {BOARD_STATUSES.map((status) => (
-                <KpiTile key={status} status={status} count={list.filter((item) => item.status === status).length} />
-              ))}
-            </div>
-          )}
-
           {!isAdmin && mineOpenCount > 0 && (
             <Link href="/mine" className="overview-banner">
               <span className="overview-banner-icon">

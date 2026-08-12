@@ -228,6 +228,7 @@ export function Sheet({
   children,
   footer,
   closeLabel,
+  className,
 }: {
   open: boolean;
   onClose: () => void;
@@ -236,6 +237,7 @@ export function Sheet({
   children: ReactNode;
   footer?: ReactNode;
   closeLabel: string;
+  className?: string;
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const titleId = useId();
@@ -246,7 +248,7 @@ export function Sheet({
   return (
     <>
       <div className="backdrop" onClick={onClose} aria-hidden="true" />
-      <div className="sheet" role="dialog" aria-modal="true" aria-labelledby={titleId} ref={ref} tabIndex={-1}>
+      <div className={classes("sheet", className)} role="dialog" aria-modal="true" aria-labelledby={titleId} ref={ref} tabIndex={-1}>
         <header className="sheet-header">
           <div style={{ flex: 1, minWidth: 0 }}>
             <h2 className="sheet-title" id={titleId}>

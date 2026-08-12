@@ -1,9 +1,9 @@
 "use client";
 
 import { Link2, ListChecks, Plus, Trash2, Unlink } from "lucide-react";
-import NextLink from "next/link";
 import { useState } from "react";
 import { canEditRequest, type RequestDetail } from "../lib/domain";
+import { Link } from "../lib/local-navigation";
 import {
   useAppItems,
   useCreateChecklistItem,
@@ -221,9 +221,9 @@ function LinkedCardsSection({ request, canManage }: { request: RequestDetail; ca
               <TypeChip type={child.type} iconOnly />
               <StatusPill status={child.status} />
               {child.priority !== "none" && <PriorityChip priority={child.priority} iconOnly />}
-              <NextLink href={`/r/${encodeURIComponent(child.id)}`} className="subtask-title card-link">
+              <Link href={`/r/${encodeURIComponent(child.id)}`} className="subtask-title card-link">
                 {child.title}
-              </NextLink>
+              </Link>
               {canManage && (
                 <span className="subtask-actions">
                   <IconButton

@@ -11,6 +11,11 @@ import {
   type RefObject,
 } from "react";
 import { classes } from "../../lib/format";
+import {
+  isOverlayHistory,
+  pushOverlayHistory,
+  stripOverlayHistory,
+} from "../../lib/local-navigation";
 import { markRouteTransitionEnd } from "../../lib/route-transition";
 import { Button, IconButton } from "./primitives";
 
@@ -100,7 +105,8 @@ function useHistoryBackToClose(open: boolean, onClose: () => void) {
     if (!open || typeof window === "undefined") return;
 
     const openedAtHref = window.location.href;
-    window.history.pushState({ vinextOverlay: true }, "");
+    const token = crypto.randomUUID();
+    pushOverlayHistory(token);
     let consumedByPopstate = false;
 
     function onPopState() {
@@ -115,13 +121,11 @@ function useHistoryBackToClose(open: boolean, onClose: () => void) {
     return () => {
       window.removeEventListener("popstate", onPopState);
       if (consumedByPopstate) return;
-      const state = window.history.state as { vinextOverlay?: boolean } | null;
-      if (!state?.vinextOverlay) return;
+      if (!isOverlayHistory(token)) return;
       if (window.location.href === openedAtHref) {
         window.history.back();
       } else {
-        const { vinextOverlay: _vinextOverlay, ...rest } = state;
-        window.history.replaceState(rest, "");
+        stripOverlayHistory(token);
       }
     };
   }, [open]);

@@ -1,8 +1,7 @@
 "use client";
 
 import { LayoutGrid, User, Users } from "lucide-react";
-import Link from "next/link";
-import { usePathname } from "../../lib/local-navigation";
+import { Link, usePathname } from "../../lib/local-navigation";
 import { useAuth, useT } from "../providers";
 
 export function SettingsNav() {

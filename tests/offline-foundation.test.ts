@@ -10,10 +10,13 @@ import { revisionConflicts } from "../api/router";
 
 describe("offline client routing", () => {
   it("resolves dynamic routes without an RSC response", () => {
-    expect(clientRoute("/a/my%20app")).toEqual({ kind: "app", appId: "my app" });
+    expect(clientRoute("/a/my%20app")).toEqual({ kind: "app", appId: "my app", compose: false });
+    expect(clientRoute("/a/my%20app/new")).toEqual({ kind: "app", appId: "my app", compose: true });
     expect(clientRoute("/r/local-id")).toEqual({ kind: "request", requestId: "local-id" });
     expect(clientRoute("/settings/people")).toEqual({ kind: "settings-people" });
-    expect(clientRoute("/unknown")).toEqual({ kind: "overview" });
+    expect(clientRoute("/unknown")).toEqual({ kind: "not-found" });
+    expect(clientRoute("/r/local-id/extra")).toEqual({ kind: "not-found" });
+    expect(clientRoute("/settings/unknown")).toEqual({ kind: "not-found" });
   });
 });
 

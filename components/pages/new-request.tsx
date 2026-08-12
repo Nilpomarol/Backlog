@@ -1,7 +1,6 @@
 "use client";
 
 import { ChevronDown, Lightbulb } from "lucide-react";
-import Link from "next/link";
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import {
   ITEM_EFFORTS,
@@ -13,7 +12,7 @@ import {
   type Visibility,
 } from "../../lib/domain";
 import { effortLabels, priorityLabels, typeLabels } from "../../lib/i18n";
-import { useRouter } from "../../lib/local-navigation";
+import { Link, useRouter } from "../../lib/local-navigation";
 import {
   useAppItems,
   useApps,

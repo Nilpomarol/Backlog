@@ -1,7 +1,6 @@
 "use client";
 
 import { ArrowLeft, ChevronRight, Eye, FileQuestion, FolderInput, Lock, Pencil, Trash2 } from "lucide-react";
-import Link from "next/link";
 import { useState } from "react";
 import {
   ALL_STATUSES,
@@ -21,7 +20,7 @@ import {
 import { useBackHref } from "../../lib/board-return";
 import { formatDateTime, formatRelative } from "../../lib/format";
 import { effortLabels, priorityLabels, statusLabelsSingular, typeLabels } from "../../lib/i18n";
-import { useRouter } from "../../lib/local-navigation";
+import { Link, useRouter } from "../../lib/local-navigation";
 import {
   useApps,
   useDeleteRequest,
@@ -564,7 +563,7 @@ export function RequestDetailMobile({ requestId }: { requestId: string }) {
           toast(t.toastDeleted);
           setConfirmDelete(false);
           // The board remains a valid destination even when the delete is queued offline.
-          router.push(`/a/${encodeURIComponent(request.appId)}`);
+          router.discard(`/a/${encodeURIComponent(request.appId)}`);
         }}
       />
 

@@ -1,10 +1,10 @@
 "use client";
 
 import { CornerDownRight, ListChecks } from "lucide-react";
-import Link from "next/link";
 import type { DragEvent, ReactNode } from "react";
 import { classes, formatRelative } from "../lib/format";
 import type { RequestSummary } from "../lib/domain";
+import { Link } from "../lib/local-navigation";
 import { InternalChip, PriorityChip, StatusPill, TypeChip } from "./badges";
 import { useAuth, useLanguage } from "./providers";
 import { AppIcon, Avatar } from "./ui/primitives";

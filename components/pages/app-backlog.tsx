@@ -19,7 +19,6 @@ import {
   Tag,
   X,
 } from "lucide-react";
-import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   ALL_STATUSES,
@@ -35,7 +34,7 @@ import {
 } from "../../lib/domain";
 import { classes } from "../../lib/format";
 import { priorityLabels, statusLabels, typeLabels } from "../../lib/i18n";
-import { useRouter, useSearchParams } from "../../lib/local-navigation";
+import { Link, useRouter, useSearchParams } from "../../lib/local-navigation";
 import { useAppItems, useApps, useErrorMessage, useSetStatus, useSetVisibility } from "../../lib/queries";
 import { priorityIcons, StatusDot, typeIcons } from "../badges";
 import { useAuth, useLanguage } from "../providers";
@@ -593,7 +592,7 @@ function BulkBar({
   );
 }
 
-export function AppBacklogPage({ appId }: { appId: string }) {
+export function AppBacklogPage({ appId, openComposer = false }: { appId: string; openComposer?: boolean }) {
   const { t, language } = useLanguage();
   const { profile } = useAuth();
   const isAdmin = profile?.role === "admin";
@@ -615,6 +614,15 @@ export function AppBacklogPage({ appId }: { appId: string }) {
   // Remounts the sheet each time it opens, so its form state (title, description, ...) always
   // starts blank instead of carrying over a previous draft.
   const [newRequestKey, setNewRequestKey] = useState(0);
+  const composerRequested = openComposer || searchParams.get("new") === "1";
+  const [composerRequestHandled, setComposerRequestHandled] = useState(false);
+  if (composerRequested !== composerRequestHandled) {
+    setComposerRequestHandled(composerRequested);
+    if (composerRequested) {
+      setNewRequestKey((key) => key + 1);
+      setNewOpen(true);
+    }
+  }
   const openNewRequest = () => {
     setNewRequestKey((key) => key + 1);
     setNewOpen(true);
@@ -625,16 +633,15 @@ export function AppBacklogPage({ appId }: { appId: string }) {
   // mount, so the FAB/links still open the sheet when the board was already on screen (e.g. the
   // FAB is a link, so it doesn't remount this page when you're already viewing this board).
   useEffect(() => {
-    if (searchParams.get("new") !== "1") return;
-    setNewRequestKey((key) => key + 1);
-    setNewOpen(true);
+    if (!composerRequested) return;
     const next = new URLSearchParams(searchParams.toString());
     next.delete("new");
     const query = next.toString();
-    router.replace(query ? `?${query}` : "?", { scroll: false });
+    const board = `/a/${encodeURIComponent(appId)}`;
+    router.replace(query ? `${board}?${query}` : board, { scroll: false });
     // router/setNewOpen/setNewRequestKey are stable; re-running per new searchParams is the point.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [searchParams]);
+  }, [appId, composerRequested, searchParams]);
 
   const app = apps.find((entry) => entry.id === appId);
   const visible = useMemo(() => applyFilters(items ?? [], filters, profile?.id), [items, filters, profile?.id]);

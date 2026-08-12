@@ -12,12 +12,11 @@ import {
   Loader2,
 } from "lucide-react";
 import { useIsFetching } from "@tanstack/react-query";
-import Link from "next/link";
-import { useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
-import { rememberVisitedUrl } from "../lib/board-return";
+import { useEffect, useState, useSyncExternalStore, type ReactNode } from "react";
+import { clientRoute } from "../lib/client-route";
 import { useOnlineStatus } from "../lib/connectivity";
 import { LANGUAGES, type Language } from "../lib/i18n";
-import { usePathname, useSearchParams } from "../lib/local-navigation";
+import { Link, usePathname, useSearchParams } from "../lib/local-navigation";
 import { useAllItems, useApps } from "../lib/queries";
 import { isRouteTransitionPending, markRouteTransitionEnd, subscribeRouteTransition } from "../lib/route-transition";
 import { useAuth, useLanguage } from "./providers";
@@ -243,31 +242,23 @@ function ReadyShell({ children }: { children: ReactNode }) {
     markRouteTransitionEnd();
   }, [pathname, searchParams]);
 
-  // Tracks "the page before this one" across every navigation in the app (see
-  // lib/board-return.ts) — not just the board, so breadcrumbs elsewhere (e.g. a subtask's
-  // parent) can return you to wherever you actually came from.
-  const currentUrlRef = useRef<string | null>(null);
-  useEffect(() => {
-    const search = searchParams.toString();
-    const url = search ? `${pathname}?${search}` : pathname;
-    if (currentUrlRef.current && currentUrlRef.current !== url) rememberVisitedUrl(currentUrlRef.current);
-    currentUrlRef.current = url;
-  }, [pathname, searchParams]);
-
   const { data: apps = [] } = useApps();
   // Warm the complete card index from every signed-in screen. useAllItems deduplicates this with
   // overview/mine and fans the response out into persistent per-board caches.
-  useAllItems();
+  const { data: allItems = [] } = useAllItems();
 
-  const currentAppId = pathname.startsWith("/a/") ? decodeURIComponent(pathname.split("/")[2] ?? "") : "";
-  const backlogApp = apps.find((app) => app.id === currentAppId) ?? apps[0];
+  const route = clientRoute(pathname);
+  const currentAppId = route.kind === "app" ? route.appId : "";
+  const requestAppId =
+    route.kind === "request" ? allItems.find((item) => item.id === route.requestId)?.appId ?? "" : "";
+  const backlogApp = apps.find((app) => app.id === (currentAppId || requestAppId)) ?? apps[0];
   const backlogHref = backlogApp ? `/a/${encodeURIComponent(backlogApp.id)}` : "/";
   const createHref = backlogApp ? `/a/${encodeURIComponent(backlogApp.id)}?new=1` : "/";
 
-  const isOverview = pathname === "/";
-  const isBacklog = pathname.startsWith("/a/") || pathname.startsWith("/r/");
-  const isMine = pathname === "/mine";
-  const isSettings = pathname.startsWith("/settings");
+  const isOverview = route.kind === "overview";
+  const isBacklog = route.kind === "app" || route.kind === "request";
+  const isMine = route.kind === "mine";
+  const isSettings = route.kind.startsWith("settings-");
 
   return (
     <div className="app-shell">

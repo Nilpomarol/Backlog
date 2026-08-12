@@ -24,6 +24,8 @@ const ca = {
   close: "Tanca",
   chooseApp: "Tria una aplicació",
   backTo: "Torna a",
+  routeNotFoundTitle: "No hem trobat aquesta pàgina",
+  routeNotFoundBody: "L’adreça no correspon a cap pàgina del backlog.",
 
   // Authentication
   signInTitle: "Entra al backlog",
@@ -334,6 +336,8 @@ const en: Dictionary = {
   close: "Close",
   chooseApp: "Choose an app",
   backTo: "Back to",
+  routeNotFoundTitle: "We couldn’t find this page",
+  routeNotFoundBody: "This address doesn’t match any page in the backlog.",
 
   signInTitle: "Sign in to the backlog",
   signInBody: "This space is invitation only. Sign in with the Google account that was invited.",

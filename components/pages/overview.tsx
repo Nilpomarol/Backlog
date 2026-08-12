@@ -1,10 +1,10 @@
 "use client";
 
 import { ArrowRight, Inbox, Plus, Star } from "lucide-react";
-import Link from "next/link";
 import { useMemo, useState } from "react";
 import { ACTIVE_STATUSES, BOARD_STATUSES, type Application, type ItemStatus, type RequestSummary } from "../../lib/domain";
 import { statusLabels } from "../../lib/i18n";
+import { Link } from "../../lib/local-navigation";
 import { useAllItems, useApps, useErrorMessage, type CrossAppRequest } from "../../lib/queries";
 import { PriorityChip, StatusDot, TypeChip } from "../badges";
 import { useAuth, useLanguage, useT } from "../providers";

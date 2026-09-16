@@ -32,7 +32,7 @@ The browser never receives database credentials. Firebase browser configuration 
 
 ## Screens
 
-The repository includes the visual product preview above. The app itself is access-controlled, so the public repository contains no real user data or credentials.
+The visual product preview above reflects the board's visual language. Live captures are generated from the fictional **Luma** workspace in [the screenshot seed](doc/DEMO_SCREENSHOTS.sql), which keeps the repository free of real user data and credentials while making every state reproducible.
 
 ## Run locally
 

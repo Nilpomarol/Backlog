@@ -32,7 +32,11 @@ The browser never receives database credentials. Firebase browser configuration 
 
 ## Screens
 
-The visual product preview above reflects the board's visual language. Live captures are generated from the fictional **Luma** workspace in [the screenshot seed](doc/DEMO_SCREENSHOTS.sql), which keeps the repository free of real user data and credentials while making every state reproducible.
+The example below uses the fictional **Luma** workspace, so the repository can show the product without exposing real feedback or credentials.
+
+![Luma demo board](doc/screenshots/luma-demo-board.svg)
+
+The seeded data behind this public-safe example—including board, checklist, linked cards, and votes—is in [the screenshot seed](doc/DEMO_SCREENSHOTS.sql).
 
 ## Run locally
 

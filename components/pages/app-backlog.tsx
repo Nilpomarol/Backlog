@@ -626,6 +626,8 @@ export function AppBacklogPage({ appId }: { appId: string }) {
   // FAB is a link, so it doesn't remount this page when you're already viewing this board).
   useEffect(() => {
     if (searchParams.get("new") !== "1") return;
+    // This effect synchronizes a navigation-owned `?new=1` flag with the composer UI.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setNewRequestKey((key) => key + 1);
     setNewOpen(true);
     const next = new URLSearchParams(searchParams.toString());

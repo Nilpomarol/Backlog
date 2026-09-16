@@ -15,7 +15,7 @@
     "deploy:preview": "wrangler versions upload",
     "deploy:dry-run": "npm run build && wrangler deploy --dry-run --outdir .wrangler/dry-run",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run --config vitest.config.ts && npm run build && node --test tests/rendered-html.test.mjs",
+    "test": "npm run build && vitest run --config vitest.config.ts && node --test tests/rendered-html.test.mjs",
     "lint": "eslint . --ignore-pattern dist --ignore-pattern .next --ignore-pattern .wrangler",
     "db:generate": "drizzle-kit generate",
     "db:setup": "node scripts/setup-db.mjs",

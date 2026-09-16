@@ -120,7 +120,8 @@ function useHistoryBackToClose(open: boolean, onClose: () => void) {
       if (window.location.href === openedAtHref) {
         window.history.back();
       } else {
-        const { vinextOverlay: _vinextOverlay, ...rest } = state;
+        const rest = { ...state };
+        delete rest.vinextOverlay;
         window.history.replaceState(rest, "");
       }
     };

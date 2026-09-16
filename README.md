@@ -32,11 +32,16 @@ The browser never receives database credentials. Firebase browser configuration 
 
 ## Screens
 
-The example below uses the fictional **Luma** workspace, so the repository can show the product without exposing real feedback or credentials.
+The screenshots below use the fictional **Luma** workspace, so the repository can show the real product without exposing real feedback or credentials.
 
-![Luma demo board](doc/screenshots/luma-demo-board.svg)
+![Luma feedback board](doc/screenshots/luma-board.png)
 
-The seeded data behind this public-safe example—including board, checklist, linked cards, and votes—is in [the screenshot seed](doc/DEMO_SCREENSHOTS.sql).
+<p align="center">
+  <img src="doc/screenshots/luma-card-detail.png" alt="Feedback card with checklist, linked cards, voting, and workflow controls" width="49%" />
+  <img src="doc/screenshots/luma-new-proposal.png" alt="New feedback proposal form" width="49%" />
+</p>
+
+The seeded data behind these captures—including board, checklist, linked cards, and votes—is in [the screenshot seed](doc/DEMO_SCREENSHOTS.sql).
 
 ## Run locally
 
